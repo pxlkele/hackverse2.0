@@ -176,11 +176,9 @@ schemes:
   #    road-side work, long hours, no employer cover. Rounds Setu out from a
   #    credit tool into credit + insurance.
   #
-  #    NOTE FOR PALAK: the ingested PMSBY Rules PDF is the 2015 original and
-  #    states a Rs 12/year premium. The premium was revised upward in 2022
-  #    (widely reported as Rs 20). We cite the document we have, per the rule
-  #    that nothing is asserted without a source — but verify before the demo,
-  #    because a judge who knows this scheme may query the number.
+  #    Sourced from the current PMSBY Guidelines. The superseded 2015 rules
+  #    (Rs 12 premium) were removed from ingestion/sources so retrieval cannot
+  #    surface the outdated figure.
   - id: pmsby
     name: PMSBY
     full_name: Pradhan Mantri Suraksha Bima Yojana
@@ -188,15 +186,17 @@ schemes:
     priority: 3
     benefit_summary: >-
       Rs 2 lakh cover for accidental death or disability, for a premium of
-      Rs 12 per year auto-debited from your savings account. Renewable yearly.
+      Rs 20 per year auto-debited from your bank or post office account.
+      Renewable yearly.
     benefit_amount_rupees: 200000
     benefit_detail:
-      premium_per_year_rupees: 12
+      premium_per_year_rupees: 20
       cover_accidental_death_rupees: 200000
-      renewal: annual, each 1st of June
-      payment: auto-debit from the linked savings bank account
+      cover_partial_disability_rupees: 100000
+      renewal: annual, consent due by 31st May each year
+      payment: auto-debit from the linked bank or post office account
     source_docs:
-      - PMSBY Rules.pdf
+      - PMSBY Guidelines.pdf
       - SOP PMSBY.pdf
 
     rules:
@@ -205,13 +205,13 @@ schemes:
         field: age
         op: gte
         value: 18
-        source_doc: PMSBY Rules.pdf
+        source_doc: PMSBY Guidelines.pdf
         source_page: 2
         source_quote: >-
-          The savings bank account holders of the participating banks aged
-          between 18 years (completed) and 70 years (age nearer birthday) who
-          give their consent to join / enable auto-debit will be enrolled into
-          the scheme.
+          Individual bank/Post office account holders of participating banks/
+          Post office aged between 18 years (completed) and 70 years (age nearer
+          birthday) who give their consent to join / enable auto-debit will be
+          enrolled into the scheme.
         remedy: null   # age is not remediable by any action
 
       - id: pmsby_max_age
@@ -219,24 +219,26 @@ schemes:
         field: age
         op: lte
         value: 70
-        source_doc: PMSBY Rules.pdf
+        source_doc: PMSBY Guidelines.pdf
         source_page: 2
         source_quote: >-
-          ...aged between 18 years (completed) and 70 years (age nearer
-          birthday)...
+          All individual bank/Post office account holders in the age group of
+          18 to 70 years in participating banks / Post office will be entitled
+          to join.
         remedy: null
 
       - id: pmsby_savings_account
-        description: Must hold a savings bank account for auto-debit of the premium
+        description: Must hold a bank or post office account for auto-debit of the premium
         field: documents
         op: contains
         value: bank_account
-        source_doc: PMSBY Rules.pdf
+        source_doc: PMSBY Guidelines.pdf
         source_page: 2
         source_quote: >-
-          Premium: Rs.12/- per annum per member. The premium will be deducted
-          from the account holder's savings bank account through 'auto debit'
-          facility in one installment.
+          Premium: Rs. 20/- per annum per member. The premium will be deducted
+          from the account holder's bank / Post office account through 'auto
+          debit' facility in one instalment on or before 1st June of each
+          annual coverage period.
         remedy:
           action: Open a zero-balance Jan Dhan savings account
           cost_rupees: 0
@@ -245,7 +247,7 @@ schemes:
           detail: >-
             A PMJDY account needs only Aadhaar and has no minimum balance. The
             same account also unlocks PM SVANidhi disbursal, so this one step
-            clears two schemes.
+            clears two schemes. A post office savings account also qualifies.
 
   # ── FSSAI: the second rung for a food vendor. The Regulations define a petty
   #    food manufacturer as "a petty retailer, hawker, itinerant vendor or
