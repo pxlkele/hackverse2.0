@@ -1,0 +1,12 @@
+{
+  "total_chunks": 85,
+  "documents": [
+    "Loan Operations Guidelines.pdf",
+    "Scheme Guidelines.pdf",
+    "Street Food Hubs Guidelines.pdf"
+  ],
+  "schemes": [
+    "pm_svanidhi"
+  ],
+  "embed_model": "granite-embedding:278m"
+}

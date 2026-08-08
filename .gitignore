@@ -1,26 +1,28 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.coverage
 
-node_modules
-dist
-dist-ssr
+# Node
+node_modules/
+dist/
 *.local
-.conductor/settings.local.toml
-.conductor/settings.local.json
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# BUT KEEP THESE (override defaults):
+!services/api/data/setu.db
+!services/api/data/chroma/
+!services/api/data/chroma/**
+
+# IDE
+.vscode/
+.idea/
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
