@@ -1,0 +1,14 @@
+# Ingestion only — needed to rebuild the Chroma index from PDFs.
+# Heavy (Docling pulls PyTorch). The index is committed, so skip this unless
+# you are adding scheme documents.
+#
+#   pip install -r requirements.txt -r requirements-ingest.txt
+
+docling>=2.118
+docling-core>=2.91
+pypdf>=4.3
+
+# IBM Data Prep Kit — doc_chunk transform (see ingestion/pipeline.py).
+# Note: installing this downgrades docling-core; reinstall it after if Docling
+# starts failing with an Orientation ImportError.
+data-prep-toolkit-transforms[doc_chunk]>=1.0

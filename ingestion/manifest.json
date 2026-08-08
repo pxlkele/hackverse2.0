@@ -1,5 +1,5 @@
 {
-  "total_chunks": 336,
+  "total_chunks": 622,
   "documents": [
     "ApplicationForm.pdf",
     "ClaimForm.pdf",
@@ -16,5 +16,6 @@
     "pmsby",
     "unclassified"
   ],
-  "embed_model": "granite-embedding:278m"
+  "embed_model": "granite-embedding:278m",
+  "chunker": "dpk"
 }
