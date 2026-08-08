@@ -187,11 +187,22 @@ LANGUAGE_MENU = [
 
 # ── The state machine ────────────────────────────────────────────────────────
 
-def begin() -> tuple[str, Turn]:
-    """Caller dials in. Returns the call id and the greeting."""
+def begin(language: str | None = None) -> tuple[str, Turn]:
+    """
+    Caller dials in. Returns the call id and the greeting.
+
+    A client with a screen (the PWA) picks the language itself, so passing one
+    skips the spoken menu and goes straight to the question. The phone path
+    passes nothing and still hears "एक दबाइए".
+    """
     call_id = uuid.uuid4().hex[:8]
     session = Session(call_id=call_id)
     _SESSIONS[call_id] = session
+
+    if language in ("hi", "en"):
+        session.language = language
+        return call_id, _turn(session, "ask_situation", "speech")
+
     return call_id, _turn(session, "greeting", "digit", options=LANGUAGE_MENU)
 
 
@@ -296,9 +307,13 @@ class TextRequest(BaseModel):
     text: str
 
 
+class CallRequest(BaseModel):
+    language: str | None = None
+
+
 @router.post("/call")
-def start_call():
-    call_id, turn = begin()
+def start_call(request: CallRequest | None = None):
+    call_id, turn = begin(request.language if request else None)
     return {"call_id": call_id, "turn": turn.__dict__}
 
 
