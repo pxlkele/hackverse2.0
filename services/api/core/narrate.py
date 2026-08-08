@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from . import eligibility
 from .llm import chat
+from .profile import categories_in
 from .schemas import Decision, EligibilityStatus, Profile
 
 SYSTEM = """You are speaking ALOUD to an Indian street vendor, directly, as "you".
@@ -73,35 +74,9 @@ def narrate_decision(decision: Decision, lang: str = "hi") -> str:
     return " ".join(text.split())
 
 
-# What someone asks for, mapped to the scheme category that answers it. Matched
-# against stated_need and the raw sentence, in both scripts, because a caller
-# says "paise chahiye", not "credit".
-NEED_TO_CATEGORY = {
-    "credit": (
-        "loan", "paisa", "paise", "karza", "karz", "udhaar", "udhar", "credit",
-        "money", "fund", "capital", "business badhana", "dukaan badhana",
-        "पैसा", "पैसे", "लोन", "कर्ज", "कर्ज़", "उधार", "पूँजी", "पूंजी",
-        "काम बढ़ान", "दुकान बढ़ान", "धंधा बढ़ान",
-    ),
-    "insurance": (
-        "insurance", "bima", "beema", "accident", "suraksha", "hospital", "illness",
-        "बीमा", "दुर्घटना", "सुरक्षा", "इलाज", "बीमारी",
-    ),
-    "licence": (
-        "licence", "license", "registration", "fssai", "certificate", "legal",
-        "लाइसेंस", "लायसेंस", "पंजीकरण", "रजिस्ट्रेशन", "प्रमाण",
-    ),
-}
-
-
 def _needed_categories(profile: Profile) -> set[str]:
     """Which scheme categories the caller actually asked about."""
-    haystack = f"{profile.stated_need or ''} {profile.raw_text or ''}".lower()
-    return {
-        category
-        for category, words in NEED_TO_CATEGORY.items()
-        if any(word in haystack for word in words)
-    }
+    return categories_in(f"{profile.stated_need or ''} {profile.raw_text or ''}")
 
 
 def _category_of(decision: Decision) -> str | None:

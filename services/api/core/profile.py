@@ -113,6 +113,39 @@ CATEGORY_WORDS = {
     ),
 }
 
+# What someone asks for, mapped to the scheme category that answers it. Matched
+# against their own words, in both scripts, because a caller says "paise
+# chahiye", not "credit". Lives here rather than in narrate because it is
+# vocabulary about how people speak, and both the extraction guard below and
+# the speaking order need the same list.
+NEED_TO_CATEGORY = {
+    "credit": (
+        "loan", "paisa", "paise", "karza", "karz", "udhaar", "udhar", "credit",
+        "money", "fund", "capital", "business badhana", "dukaan badhana",
+        "पैसा", "पैसे", "लोन", "कर्ज", "कर्ज़", "उधार", "पूँजी", "पूंजी",
+        "काम बढ़ान", "दुकान बढ़ान", "धंधा बढ़ान",
+    ),
+    "insurance": (
+        "insurance", "bima", "beema", "accident", "suraksha", "hospital", "illness",
+        "बीमा", "दुर्घटना", "सुरक्षा", "इलाज", "बीमारी",
+    ),
+    "licence": (
+        "licence", "license", "registration", "fssai", "certificate", "legal",
+        "लाइसेंस", "लायसेंस", "पंजीकरण", "रजिस्ट्रेशन", "प्रमाण",
+    ),
+}
+
+
+def categories_in(text: str) -> set[str]:
+    """Which scheme categories these words ask for."""
+    low = (text or "").lower()
+    return {
+        category
+        for category, words in NEED_TO_CATEGORY.items()
+        if any(word in low for word in words)
+    }
+
+
 WANTS_LOAN = re.compile(
     r"loan\s+(chahiye|chaahiye|lena|leni|milega|mil sakta)|need\s+(a\s+)?loan|want\s+(a\s+)?loan",
     re.IGNORECASE,
@@ -314,6 +347,18 @@ def _enrich(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]
     if data.get("has_existing_loan") and WANTS_LOAN.search(text):
         data["has_existing_loan"] = False
         derived.append("has_existing_loan corrected: user wants a loan, does not hold one")
+
+    # The model volunteers "loan chahiye" for people who never mentioned money —
+    # a loan is the most common request in its training data, so it fills the
+    # blank with one. Measured: "मुझे बीमा चाहिए" (I need insurance) came back as
+    # stated_need "loan chahiye". A fabricated need misdirects both the spoken
+    # answer and retrieval, so drop it unless their own words support it.
+    if data.get("stated_need"):
+        claimed = categories_in(str(data["stated_need"]))
+        supported = categories_in(text)
+        if claimed and not (claimed & supported):
+            data["stated_need"] = None
+            derived.append("stated_need dropped: not supported by the user's own words")
 
     # Monthly from daily. 26 working days is the conventional assumption for
     # daily-wage work, recorded as derived so the trace stays honest.
