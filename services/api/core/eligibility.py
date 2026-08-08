@@ -27,9 +27,24 @@ from .schemas import Citation, Decision, EligibilityStatus, Profile, RuleResult
 
 SCHEMES_PATH = Path(__file__).resolve().parent.parent / "data" / "schemes.yaml"
 
+def _annual_turnover(p: Profile) -> float | None:
+    """
+    Annual turnover from whatever the person actually said.
+
+    Most informal workers quote a daily figure, not a monthly one, so deriving
+    only from monthly_income left turnover unknown for nearly everyone. 26
+    working days is the conventional assumption for daily-wage work.
+    """
+    if p.monthly_income:
+        return p.monthly_income * 12
+    if p.daily_income:
+        return p.daily_income * 26 * 12
+    return None
+
+
 # Fields a rule may reference that aren't stored directly on Profile.
 DERIVED_FIELDS = {
-    "annual_turnover": lambda p: (p.monthly_income * 12) if p.monthly_income else None,
+    "annual_turnover": _annual_turnover,
     # Only an NPA/written-off loan disqualifies. Merely holding a loan does not,
     # and conflating the two would wrongly reject a large share of applicants.
     "has_existing_loan_npa": lambda p: None,
@@ -163,7 +178,14 @@ def evaluate_scheme(profile: Profile, scheme: dict[str, Any]) -> Decision:
         if r.passed is None and not by_id[r.rule_id].get("optional", False)
     ]
 
-    if failed:
+    # A gating rule says who the scheme is *for*. If we don't know that, no
+    # other failure is worth reporting — telling someone to go get a vending
+    # certificate is wasted advice if they turn out not to be a vendor.
+    gating_unknown = [r for r in unknown if by_id[r.rule_id].get("gating", False)]
+
+    if gating_unknown:
+        status = EligibilityStatus.NEED_INFO
+    elif failed:
         status = EligibilityStatus.NOT_ELIGIBLE
     elif unknown:
         status = EligibilityStatus.NEED_INFO

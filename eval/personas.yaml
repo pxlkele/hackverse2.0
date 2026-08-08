@@ -1,0 +1,333 @@
+# Golden personas for the eligibility engine.
+#
+# Each persona is a realistic profile plus the outcome we assert is correct.
+# These are the ground truth: if the engine and this file disagree, one of them
+# is wrong and a real person would get bad advice.
+#
+# expect:
+#   eligible      schemes that must come back ELIGIBLE
+#   ladder        schemes that must come back NOT_ELIGIBLE *with* a path
+#   blocked       schemes that must come back NOT_ELIGIBLE with NO path
+#   need_info     schemes we must refuse to decide on
+#
+# slice: demographic labels, used only for the fairness audit. They must never
+# influence a decision - that is precisely what we are testing for.
+
+personas:
+  # ── Street vendors: the core population ──────────────────────────────────
+  - id: ramesh_full
+    note: Fully documented vendor. The happy path.
+    slice: {gender: male, state: Karnataka, urban: true}
+    profile:
+      age: 34
+      occupation: pani puri vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 800
+      years_in_business: 7
+      city: Bangalore
+      state: Karnataka
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby, fssai_basic]
+
+  - id: ramesh_no_cov
+    note: The demo persona. Missing vending proof and UPI - both fixable.
+    slice: {gender: male, state: Karnataka, urban: true}
+    profile:
+      age: 34
+      occupation: pani puri vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 800
+      years_in_business: 7
+      city: Bangalore
+      state: Karnataka
+      documents: [aadhaar, bank_account]
+    expect:
+      eligible: [pmsby, fssai_basic]
+      ladder: [pm_svanidhi]
+
+  - id: vendor_lor_holder
+    note: Category C vendor with a Letter of Recommendation instead of a CoV.
+    slice: {gender: male, state: Bihar, urban: false}
+    profile:
+      age: 41
+      occupation: vegetable cart vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 600
+      city: Patna
+      state: Bihar
+      documents: [aadhaar, bank_account, upi_id, letter_of_recommendation]
+    expect:
+      eligible: [pm_svanidhi, pmsby, fssai_basic]
+
+  - id: vendor_nothing
+    note: No documents at all. Every gap is fixable, so a full ladder.
+    slice: {gender: female, state: Uttar Pradesh, urban: true}
+    profile:
+      age: 29
+      occupation: tea stall
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 400
+      city: Lucknow
+      state: Uttar Pradesh
+      documents: []
+    expect:
+      ladder: [pm_svanidhi, pmsby]
+      eligible: [fssai_basic]
+
+  - id: vendor_bank_only
+    note: Has an account but no ID. Aadhaar is the slow rung, 30 days.
+    slice: {gender: female, state: Maharashtra, urban: true}
+    profile:
+      age: 36
+      occupation: flower seller
+      occupation_category: street_vendor
+      sells_food: false
+      daily_income: 350
+      city: Pune
+      state: Maharashtra
+      documents: [bank_account, upi_id]
+    expect:
+      eligible: [pmsby]
+      ladder: [pm_svanidhi]
+
+  # ── Age boundaries on PMSBY ──────────────────────────────────────────────
+  - id: too_young
+    note: 17. Under the PMSBY floor and nothing can fix that.
+    slice: {gender: male, state: Delhi, urban: true}
+    profile:
+      age: 17
+      occupation: snack cart helper
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 300
+      city: Delhi
+      state: Delhi
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, fssai_basic]
+      blocked: [pmsby]
+
+  - id: too_old
+    note: 74. Over the PMSBY ceiling. Must not be offered a false path.
+    slice: {gender: male, state: Tamil Nadu, urban: true}
+    profile:
+      age: 74
+      occupation: idli vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 500
+      city: Chennai
+      state: Tamil Nadu
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, fssai_basic]
+      blocked: [pmsby]
+
+  - id: exactly_eighteen
+    note: Boundary. 18 is inclusive.
+    slice: {gender: female, state: Gujarat, urban: true}
+    profile:
+      age: 18
+      occupation: juice stall
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 450
+      city: Surat
+      state: Gujarat
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby, fssai_basic]
+
+  - id: exactly_seventy
+    note: Boundary. 70 is inclusive.
+    slice: {gender: male, state: West Bengal, urban: true}
+    profile:
+      age: 70
+      occupation: roadside tea seller
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 300
+      city: Kolkata
+      state: West Bengal
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby, fssai_basic]
+
+  # ── Non-vendors: must NOT be offered PM SVANidhi ─────────────────────────
+  - id: tailor
+    note: Artisan, not a vendor. No ladder exists - you cannot become a vendor.
+    slice: {gender: female, state: Maharashtra, urban: true}
+    profile:
+      age: 38
+      occupation: tailor
+      occupation_category: artisan
+      sells_food: false
+      monthly_income: 9000
+      city: Pune
+      state: Maharashtra
+      documents: [aadhaar, bank_account, upi_id]
+    expect:
+      eligible: [pmsby]
+      blocked: [pm_svanidhi, fssai_basic]
+
+  - id: farmer
+    slice: {gender: male, state: Madhya Pradesh, urban: false}
+    profile:
+      age: 45
+      occupation: farmer
+      occupation_category: farmer
+      sells_food: false
+      monthly_income: 7000
+      city: Indore
+      state: Madhya Pradesh
+      documents: [aadhaar, bank_account]
+    expect:
+      eligible: [pmsby]
+      blocked: [pm_svanidhi, fssai_basic]
+
+  - id: auto_driver
+    slice: {gender: male, state: Telangana, urban: true}
+    profile:
+      age: 31
+      occupation: auto driver
+      occupation_category: service
+      sells_food: false
+      daily_income: 700
+      city: Hyderabad
+      state: Telangana
+      documents: [aadhaar, bank_account, upi_id]
+    expect:
+      eligible: [pmsby]
+      blocked: [pm_svanidhi, fssai_basic]
+
+  - id: shopkeeper
+    note: Fixed premises, so not a street vendor - but does sell food.
+    slice: {gender: male, state: Rajasthan, urban: true}
+    profile:
+      age: 52
+      occupation: kirana shop owner
+      occupation_category: trader
+      sells_food: true
+      monthly_income: 30000
+      city: Jaipur
+      state: Rajasthan
+      documents: [aadhaar, bank_account, upi_id]
+    expect:
+      eligible: [pmsby, fssai_basic]
+      blocked: [pm_svanidhi]
+
+  # ── FSSAI turnover boundary ──────────────────────────────────────────────
+  - id: high_turnover_caterer
+    note: Above Rs 12 lakh - needs a State Licence, so a ladder not a block.
+    slice: {gender: male, state: Delhi, urban: true}
+    profile:
+      age: 44
+      occupation: catering business
+      occupation_category: trader
+      sells_food: true
+      monthly_income: 150000
+      city: Delhi
+      state: Delhi
+      documents: [aadhaar, bank_account, upi_id]
+    expect:
+      eligible: [pmsby]
+      blocked: [fssai_basic, pm_svanidhi]
+
+  - id: already_fssai_registered
+    note: Holding FSSAI already is a pass, not a gap.
+    slice: {gender: female, state: Karnataka, urban: true}
+    profile:
+      age: 33
+      occupation: chaat stall
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 900
+      city: Bangalore
+      state: Karnataka
+      documents: [aadhaar, bank_account, upi_id, fssai, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby]
+      blocked: [fssai_basic]
+
+  # ── Missing information: must ASK, never reject ──────────────────────────
+  - id: no_age_stated
+    note: The behaviour the product exists for. Silence is not a rejection.
+    slice: {gender: male, state: Karnataka, urban: true}
+    profile:
+      occupation: pani puri vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 800
+      city: Bangalore
+      state: Karnataka
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, fssai_basic]
+      need_info: [pmsby]
+
+  - id: no_occupation_stated
+    slice: {gender: female, state: Bihar, urban: false}
+    profile:
+      age: 40
+      daily_income: 500
+      city: Patna
+      state: Bihar
+      documents: [aadhaar, bank_account, upi_id]
+    expect:
+      eligible: [pmsby]
+      need_info: [pm_svanidhi, fssai_basic]
+
+  - id: no_income_stated
+    note: Income is unknown, so FSSAI turnover cannot be judged.
+    slice: {gender: male, state: Uttar Pradesh, urban: true}
+    profile:
+      age: 27
+      occupation: samosa cart
+      occupation_category: street_vendor
+      sells_food: true
+      city: Kanpur
+      state: Uttar Pradesh
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby]
+      need_info: [fssai_basic]
+
+  # ── Regression cases from real bugs ──────────────────────────────────────
+  - id: wants_a_loan_not_holding_one
+    note: Granite once read "loan chahiye" as holding a loan. That would have
+          wrongly disqualified the demo persona.
+    slice: {gender: male, state: Karnataka, urban: true}
+    profile:
+      age: 34
+      occupation: pani puri vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 800
+      city: Bangalore
+      state: Karnataka
+      has_existing_loan: true
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby, fssai_basic]
+
+  - id: female_vendor_identical_to_male
+    note: Same facts as ramesh_full but female. Any difference is a bug.
+    slice: {gender: female, state: Karnataka, urban: true}
+    profile:
+      age: 34
+      gender: female
+      occupation: pani puri vendor
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 800
+      years_in_business: 7
+      city: Bangalore
+      state: Karnataka
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
+      eligible: [pm_svanidhi, pmsby, fssai_basic]

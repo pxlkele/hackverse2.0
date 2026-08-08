@@ -50,6 +50,7 @@ schemes:
         field: occupation_category
         op: eq
         value: street_vendor
+        gating: true
         source_doc: Scheme Guidelines.pdf
         source_page: 11
         source_quote: >-
@@ -273,6 +274,7 @@ schemes:
         field: sells_food
         op: is_true
         value: true
+        gating: true
         source_doc: FSSAI_Licensing_Registration_Regulations_2011.pdf
         source_page: 1
         source_quote: >-
@@ -292,14 +294,13 @@ schemes:
           ...tiny food businesses with an annual turnover not exceeding Rs 12
           lakhs and/or whose production capacity of food does not exceed 100
           kg/ltr per day.
-        remedy:
-          action: Apply for an FSSAI State Licence instead of Basic Registration
-          cost_rupees: 2000
-          time_days: 30
-          where: foscos.fssai.gov.in
-          detail: >-
-            Above the petty food business threshold a full State Licence is
-            required rather than Basic Registration.
+        # Not a ladder rung: a State Licence is a different registration, so
+        # "get one" never makes you eligible for Basic Registration. Recording
+        # it as a remedy made verify_ladder fail, correctly.
+        remedy: null
+        see_also: >-
+          Above the petty food business threshold a full FSSAI State Licence is
+          required instead. Apply at foscos.fssai.gov.in (approx Rs 2,000, 30 days).
 
       - id: fssai_not_already_registered
         description: Must not already hold FSSAI registration
