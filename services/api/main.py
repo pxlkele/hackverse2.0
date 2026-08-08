@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .core import llm, profile as profile_mod, rag
+from .core import eligibility, llm, pathfinder, profile as profile_mod, rag
 from .core.schemas import Profile, QueryRequest, QueryResponse, TrustTrace
 
 app = FastAPI(title="Setu API", version="0.1.0")
@@ -75,11 +75,16 @@ def query(request: QueryRequest):
     retrieved = rag.search(search_text, k=6)
     timings["retrieve_ms"] = round((time.perf_counter() - start) * 1000, 1)
 
+    start = time.perf_counter()
+    decisions = pathfinder.build_all(user_profile, eligibility.evaluate_all(user_profile))
+    timings["decide_ms"] = round((time.perf_counter() - start) * 1000, 1)
+
     trace = TrustTrace(
         query_id=str(uuid.uuid4())[:8],
         profile=user_profile,
         retrieved_chunk_ids=[c.chunk_id for c in retrieved],
-        decisions=[],
+        decisions=decisions,
+        schemes_version=eligibility.schemes_version(),
     )
 
     return QueryResponse(
@@ -87,10 +92,16 @@ def query(request: QueryRequest):
         profile=user_profile,
         missing_fields=profile_mod.missing_for_eligibility(user_profile),
         retrieved=retrieved,
-        decisions=[],
+        decisions=decisions,
         trace_fingerprint=trace.fingerprint(),
         timings_ms=timings,
-        debug={"eligibility_engine": "not wired yet"},
+        debug={
+            "ladders_verified": {
+                d.scheme_id: pathfinder.verify_ladder(user_profile, d)
+                for d in decisions
+                if d.ladder
+            }
+        },
     )
 
 
