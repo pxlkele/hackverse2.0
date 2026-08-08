@@ -30,7 +30,7 @@ def vendor(**overrides) -> Profile:
         years_in_business=7,
         city="Bangalore",
         state="Karnataka",
-        documents=["aadhaar", "bank_account", "vending_certificate"],
+        documents=["aadhaar", "bank_account", "upi_id", "vending_certificate"],
     )
     return Profile(**{**base, **overrides})
 
@@ -48,12 +48,12 @@ def test_fully_documented_vendor_is_eligible():
 
 def test_letter_of_recommendation_is_accepted_instead_of_certificate():
     """Category C vendors use an LoR — the scheme treats it as equivalent."""
-    profile = vendor(documents=["aadhaar", "bank_account", "letter_of_recommendation"])
+    profile = vendor(documents=["aadhaar", "bank_account", "upi_id", "letter_of_recommendation"])
     assert decide(profile).status is EligibilityStatus.ELIGIBLE
 
 
 def test_missing_vending_proof_is_not_eligible():
-    profile = vendor(documents=["aadhaar", "bank_account"])
+    profile = vendor(documents=["aadhaar", "bank_account", "upi_id"])
     assert decide(profile).status is EligibilityStatus.NOT_ELIGIBLE
 
 
@@ -102,7 +102,7 @@ def test_every_live_rule_cites_a_real_document():
 
 
 def test_failing_rule_carries_its_citation():
-    decision = decide(vendor(documents=["aadhaar", "bank_account"]))
+    decision = decide(vendor(documents=["aadhaar", "bank_account", "upi_id"]))
     failed = next(r for r in decision.rules if r.passed is False)
     assert failed.citation is not None
     assert failed.citation.source_doc
@@ -112,7 +112,7 @@ def test_failing_rule_carries_its_citation():
 # ── The ladder ───────────────────────────────────────────────────────────────
 
 def test_ladder_appears_for_missing_vending_proof():
-    profile = vendor(documents=["aadhaar", "bank_account"])
+    profile = vendor(documents=["aadhaar", "bank_account", "upi_id"])
     decision = pf.build_ladder(profile, decide(profile))
 
     assert decision.ladder, "a fixable failure must produce a ladder"
@@ -121,12 +121,21 @@ def test_ladder_appears_for_missing_vending_proof():
     assert decision.total_time_days == 7
 
 
+def test_missing_upi_adds_a_rung():
+    """UPI is required and easy to miss — it must appear as its own step."""
+    profile = vendor(documents=["aadhaar", "bank_account", "vending_certificate"])
+    decision = pf.build_ladder(profile, decide(profile))
+    assert decision.ladder and len(decision.ladder) == 1
+    assert decision.ladder[0].unblocks_rule == "svanidhi_upi_id"
+    assert pf.verify_ladder(profile, decision) is True
+
+
 def test_following_the_ladder_actually_makes_you_eligible():
     """
     The property test that keeps the centrepiece honest. A ladder that leads
     nowhere costs a real person real days.
     """
-    profile = vendor(documents=["aadhaar", "bank_account"])
+    profile = vendor(documents=["aadhaar", "bank_account", "upi_id"])
     decision = pf.build_ladder(profile, decide(profile))
     assert pf.verify_ladder(profile, decision) is True
 
@@ -184,7 +193,7 @@ def test_draft_schemes_are_excluded_by_default():
 
 def test_food_vendor_matches_both_schemes():
     """The real demo path: one person, two schemes, one of them laddered."""
-    profile = vendor(documents=["aadhaar", "bank_account"])
+    profile = vendor(documents=["aadhaar", "bank_account", "upi_id"])
     decisions = pf.build_all(profile, el.evaluate_all(profile))
     by_id = {d.scheme_id: d for d in decisions}
 

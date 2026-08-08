@@ -50,7 +50,8 @@ SCHEMA: dict[str, Any] = {
                 "type": "string",
                 "enum": [
                     "aadhaar", "pan", "voter_id", "ration_card", "bank_account",
-                    "vending_certificate", "udyam", "fssai", "e_shram", "upi_qr",
+                    "vending_certificate", "ulb_id_card", "letter_of_recommendation",
+                    "udyam", "fssai", "e_shram", "upi_id",
                 ],
             },
         },
@@ -207,6 +208,13 @@ def _enrich(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]
         if age:
             data["age"] = age
             derived.append("age parsed from text")
+
+    # UPI is spoken about far more often than it is named as a document.
+    if "upi_id" not in (data.get("documents") or []):
+        if re.search(r"\b(upi|phonepe|phone pay|gpay|google pay|paytm|bhim|qr code|scanner)\b", low):
+            if not re.search(r"\b(upi|qr)[^.]{0,30}\b(nahi|nahin|not|no)\b", low):
+                data.setdefault("documents", []).append("upi_id")
+                derived.append("upi_id inferred from mention of a UPI app")
 
     # City, if the model missed it but we can see it in the text.
     if not data.get("city"):
