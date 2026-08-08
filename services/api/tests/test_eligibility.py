@@ -168,6 +168,26 @@ def test_same_profile_produces_identical_decisions():
 
 
 def test_draft_schemes_are_excluded_by_default():
-    ids = {d.scheme_id for d in el.evaluate_all(vendor())}
-    assert "fssai_basic" not in ids
-    assert "fssai_basic" in {d.scheme_id for d in el.evaluate_all(vendor(), include_draft=True)}
+    """
+    Drafts must never reach a user — a scheme with PENDING citations would show
+    an unverifiable claim in the Why? panel.
+    """
+    all_schemes = el.load_schemes()["schemes"]
+    drafts = {s["id"] for s in all_schemes if s.get("status") == "draft"}
+
+    live_ids = {d.scheme_id for d in el.evaluate_all(vendor())}
+    assert live_ids.isdisjoint(drafts)
+
+    every_id = {s["id"] for s in all_schemes}
+    assert {d.scheme_id for d in el.evaluate_all(vendor(), include_draft=True)} == every_id
+
+
+def test_food_vendor_matches_both_schemes():
+    """The real demo path: one person, two schemes, one of them laddered."""
+    profile = vendor(documents=["aadhaar", "bank_account"])
+    decisions = pf.build_all(profile, el.evaluate_all(profile))
+    by_id = {d.scheme_id: d for d in decisions}
+
+    assert by_id["fssai_basic"].status is EligibilityStatus.ELIGIBLE
+    assert by_id["pm_svanidhi"].status is EligibilityStatus.NOT_ELIGIBLE
+    assert by_id["pm_svanidhi"].ladder

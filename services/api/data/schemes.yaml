@@ -142,41 +142,69 @@ schemes:
             Note that simply having a current loan is fine — only accounts
             classified as NPA or written off are a problem.
 
-  # ── FSSAI: a clean second rung for any vendor selling food. Rules below are
-  #    placeholders until the Licensing & Registration Regulations 2011 are
-  #    ingested. DO NOT DEMO THESE NUMBERS until the citations resolve.
+  # ── FSSAI: the second rung for a food vendor. The Regulations define a petty
+  #    food manufacturer as "a petty retailer, hawker, itinerant vendor or
+  #    temporary stall holder" — the statute describes our user exactly.
   - id: fssai_basic
     name: FSSAI Basic Registration
     full_name: Food Safety and Standards Basic Registration (Petty Food Business Operator)
     category: licence
     priority: 2
-    status: draft            # excluded from decisions while true
     benefit_summary: >-
-      Legal registration to sell food, required for street food vendors and a
-      prerequisite for several municipal permissions.
+      Legal registration to sell food. Required for street food vendors, and the
+      registration certificate and photo identity card must be displayed on the
+      cart at all times.
+    benefit_detail:
+      turnover_limit_rupees: 1200000
+      application_form: Form A (Schedule 2)
+      issues: registration certificate + photo identity card
     source_docs:
-      - TatkalRegistration.pdf
+      - FSSAI_Licensing_Registration_Regulations_2011.pdf
     rules:
       - id: fssai_sells_food
-        description: Applicant must sell food items
+        description: Applicant must sell or manufacture food
         field: sells_food
         op: is_true
         value: true
-        source_doc: TatkalRegistration.pdf
+        source_doc: FSSAI_Licensing_Registration_Regulations_2011.pdf
         source_page: 1
-        source_quote: PENDING — ingest FSSAI Licensing & Registration Regulations 2011
-        remedy: null
+        source_quote: >-
+          "Petty Food Manufacturer" means any food manufacturer, who manufactures
+          or sells any article of food himself or a petty retailer, hawker,
+          itinerant vendor or temporary stall holder.
+        remedy: null   # not remediable — this is who the registration is for
+
       - id: fssai_turnover_under_limit
-        description: Annual turnover must be below the petty food business operator threshold
+        description: Annual turnover must be under ₹12 lakh to qualify for Basic Registration
         field: annual_turnover
         op: lt
         value: 1200000
-        source_doc: TatkalRegistration.pdf
-        source_page: 1
-        source_quote: PENDING — verify threshold against Schedule 1 of the Regulations
+        source_doc: FSSAI_Licensing_Registration_Regulations_2011.pdf
+        source_page: 2
+        source_quote: >-
+          ...tiny food businesses with an annual turnover not exceeding Rs 12
+          lakhs and/or whose production capacity of food does not exceed 100
+          kg/ltr per day.
         remedy:
           action: Apply for an FSSAI State Licence instead of Basic Registration
           cost_rupees: 2000
           time_days: 30
           where: foscos.fssai.gov.in
-          detail: Above the petty-FBO threshold a full licence is required.
+          detail: >-
+            Above the petty food business threshold a full State Licence is
+            required rather than Basic Registration.
+
+      - id: fssai_not_already_registered
+        description: Must not already hold FSSAI registration
+        field: documents
+        op: not_contains
+        value: fssai
+        source_doc: FSSAI_Licensing_Registration_Regulations_2011.pdf
+        source_page: 2
+        source_quote: >-
+          The Registering Authority shall issue a registration certificate and a
+          photo identity card, which shall be displayed at a prominent place at
+          all times within the premises or vehicle or cart or any other place
+          where the person carries on sale/manufacture of food in case of Petty
+          Food Business.
+        remedy: null   # already holding it is a pass, not a gap
