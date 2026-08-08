@@ -52,10 +52,14 @@ schemes:
         value: street_vendor
         gating: true
         source_doc: Scheme Guidelines.pdf
-        source_page: 11
+        source_page: 2
         source_quote: >-
-          A 'Street Vendor' means a person engaged in vending of articles, goods,
-          wares, food items or merchandise of everyday use.
+          (Protection of Livelihood and Regulation of Street Vending) Act, 2014,
+          a 'Street Vendor' means a person engaged in vending of articles, good
+          s, wares, food items or merchandise of everyday use or offering
+          services to the general public, in a street, lane, side walk, footpath,
+          pavement, public park or any other public place or private area, from a
+          temporary
         remedy: null   # cannot be remedied — this is who the scheme is for
 
       - id: svanidhi_vending_proof
@@ -81,7 +85,8 @@ schemes:
             Recommendation, which the scheme accepts in place of a Certificate of
             Vending. Once the BDO issues the LoR, the application is forwarded to
             the bank automatically.
-          source_page: 18
+          source_doc: Loan Operations Guidelines.pdf
+          source_page: 16
           source_quote: >-
             Category C: SVs left out of the ULB-led identification survey or who
             have started vending after completion of the survey.
@@ -114,8 +119,9 @@ schemes:
         source_doc: Loan Operations Guidelines.pdf
         source_page: 3
         source_quote: >-
-          Documents required: iii. Aadhaar Card iv. Voter Identity Card (for SVs
-          from Assam and Meghalaya only) who do not have Aadhaar Card.
+          Aadhaar Card iv. Voter Identity Card (for SVs from Assam and Meghalaya
+          only) who do not have Aadhaar Card v. Savings Bank Account Passbook/
+          Bank Statement with account details of the SV
         remedy:
           action: Enrol for Aadhaar at a nearby enrolment centre
           cost_rupees: 0
@@ -221,11 +227,11 @@ schemes:
         op: lte
         value: 70
         source_doc: PMSBY Guidelines.pdf
-        source_page: 2
+        source_page: 1
         source_quote: >-
-          All individual bank/Post office account holders in the age group of
-          18 to 70 years in participating banks / Post office will be entitled
-          to join.
+          Scope of coverage : All individual bank/ Po st office account holders
+          in the age group of 18 to 70 years in participating banks / Post office
+          will be entitled to join.
         remedy: null
 
       - id: pmsby_savings_account
@@ -300,8 +306,9 @@ schemes:
         source_doc: PMJJBY Rules.pdf
         source_page: 2
         source_quote: >-
-          Entry, however, will not be possible beyond the age of 50 years. The
-          assurance terminates on attaining age 55 years.
+          On attaining age 55 years (age near birth day) subject to annual
+          renewal up to that date (entry, however, will not be possible beyond
+          the age of 50 years).
         remedy: null   # nobody can act their way out of an age limit
 
       - id: pmjjby_savings_account
@@ -353,9 +360,9 @@ schemes:
         source_doc: FSSAI_Licensing_Registration_Regulations_2011.pdf
         source_page: 1
         source_quote: >-
-          "Petty Food Manufacturer" means any food manufacturer, who manufactures
-          or sells any article of food himself or a petty retailer, hawker,
-          itinerant vendor or temporary stall holder.
+          "Petty Food Manufacturer" means any food manufacturer, who (a)
+          manufactures or sells any article of food himself or a petty retailer,
+          hawker, itinerant vendor or temporary stall holder
         remedy: null   # not remediable — this is who the registration is for
 
       - id: fssai_turnover_under_limit

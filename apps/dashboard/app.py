@@ -145,6 +145,13 @@ with tab_ask:
                             f"{rung['detail']}</div>",
                             unsafe_allow_html=True,
                         )
+                        cite = rung.get("citation")
+                        if cite:
+                            with st.expander(f"Why is this a real route? — step {rung['order']}"):
+                                st.info(
+                                    f"“{cite['snippet']}”\n\n"
+                                    f"— {cite['source_doc']}, page {cite['page_no']}"
+                                )
                 time.sleep(REVEAL_DELAY)
 
             # ── the answer he actually receives ──────────────────────────

@@ -80,6 +80,9 @@ class LadderStep(BaseModel):
     time_days: int = 0
     where: str = ""
     detail: str = ""
+    # The provision that makes this route real. A rung asserting a free 7-day
+    # fix is only credible if it can point at the clause that grants it.
+    citation: Citation | None = None
 
 
 class Decision(BaseModel):

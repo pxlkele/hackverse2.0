@@ -20,7 +20,7 @@ import copy
 from typing import Any
 
 from .eligibility import evaluate_scheme, get_rule, get_scheme
-from .schemas import Decision, EligibilityStatus, LadderStep, Profile
+from .schemas import Citation, Decision, EligibilityStatus, LadderStep, Profile
 
 # What a remedy actually changes about the person's situation. Used both to
 # order the ladder and to verify it works.
@@ -83,6 +83,24 @@ def build_ladder(profile: Profile, decision: Decision) -> Decision:
             blocked_by.append(result.description)
             continue
 
+        # A remedy may cite a different document from the rule it unblocks:
+        # the Category C provision that makes a Letter of Recommendation valid
+        # lives in the loan operations guidelines, not the scheme guidelines.
+        quote = remedy.get("source_quote") or rule.get("source_quote")
+        citation = None
+        if quote and not str(quote).startswith("PENDING"):
+            using_remedy_source = bool(remedy.get("source_quote"))
+            citation = Citation(
+                source_doc=(remedy.get("source_doc") if using_remedy_source else None)
+                           or rule.get("source_doc", ""),
+                page_no=int(
+                    (remedy.get("source_page") if using_remedy_source else None)
+                    or rule.get("source_page") or 0
+                ),
+                heading=remedy["action"],
+                snippet=" ".join(str(quote).split()),
+            )
+
         steps.append(
             LadderStep(
                 order=0,  # assigned after sorting
@@ -92,6 +110,7 @@ def build_ladder(profile: Profile, decision: Decision) -> Decision:
                 time_days=int(remedy.get("time_days", 0)),
                 where=remedy.get("where", ""),
                 detail=" ".join(str(remedy.get("detail", "")).split()),
+                citation=citation,
             )
         )
 

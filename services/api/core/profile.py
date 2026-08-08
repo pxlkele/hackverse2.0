@@ -14,7 +14,9 @@ more reliable and cheaper to debug.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
 from typing import Any
 
 from .llm import chat_json
@@ -369,8 +371,29 @@ def _enrich(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]
     return data, derived
 
 
-def extract(text: str, language: str = "hi") -> Profile:
-    """Turn a free-form description into a Profile. Never raises on missing fields."""
+_EXTRACT_CACHE = Path(__file__).resolve().parent.parent / "data" / "profile_cache"
+
+
+def _cache_path(text: str, language: str) -> Path:
+    key = hashlib.sha1(f"{language}:{text}".encode()).hexdigest()[:20]
+    return _EXTRACT_CACHE / f"{key}.json"
+
+
+def extract(text: str, language: str = "hi", use_cache: bool = True) -> Profile:
+    """
+    Turn a free-form description into a Profile. Never raises on missing fields.
+
+    Cached by input, because the same words should always yield the same facts
+    and a rehearsed demo line should not pay for the model twice. Pass
+    use_cache=False when testing extraction quality itself.
+    """
+    cached = _cache_path(text, language)
+    if use_cache and cached.exists():
+        try:
+            return Profile.model_validate_json(cached.read_text())
+        except Exception:
+            pass  # a corrupt cache entry must never break the request
+
     data = chat_json(
         prompt=f"Extract the facts:\n\n{text}",
         schema=SCHEMA,
@@ -378,12 +401,18 @@ def extract(text: str, language: str = "hi") -> Profile:
     )
     data, derived = _enrich(data, text)
 
-    return Profile(
+    profile = Profile(
         raw_text=text,
         language=language,
         derived_fields=derived,
         **{k: v for k, v in data.items() if k in Profile.model_fields},
     )
+
+    if use_cache:
+        _EXTRACT_CACHE.mkdir(parents=True, exist_ok=True)
+        cached.write_text(profile.model_dump_json())
+
+    return profile
 
 
 def missing_for_eligibility(profile: Profile) -> list[str]:

@@ -11,10 +11,36 @@ invent a rupee figure or a deadline.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
+
 from . import eligibility
 from .llm import chat
 from .profile import categories_in
 from .schemas import Decision, EligibilityStatus, Profile
+
+# Generating four schemes' worth of Hindi takes granite4:tiny-h ~25s, far too
+# slow to do live. The decisions are deterministic, so the sentence is too:
+# cache it by the content it was generated from. A rehearsed demo line is
+# written once and read from disk forever after, which also means the demo
+# speaks with the wifi off.
+CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "narration_cache"
+
+
+def _cache_key(parts: list[str], lang: str) -> str:
+    payload = json.dumps({"parts": parts, "lang": lang}, sort_keys=True)
+    return hashlib.sha1(payload.encode()).hexdigest()[:20]
+
+
+def _cached(key: str) -> str | None:
+    path = CACHE_DIR / f"{key}.txt"
+    return path.read_text() if path.exists() else None
+
+
+def _store(key: str, text: str) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"{key}.txt").write_text(text)
 
 SYSTEM = """You are speaking ALOUD to an Indian street vendor, directly, as "you".
 
@@ -153,13 +179,19 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     if not parts:
         parts.append("We could not find a matching scheme yet. Tell us a little more about your work.")
 
+    key = _cache_key(parts, lang)
+    hit = _cached(key)
+    if hit:
+        return hit
+
     language = LANG_NAMES.get(lang, "Hindi")
-    text = chat(
+    text = " ".join(chat(
         prompt=f"Say this in {language}:\n\n" + "\n".join(parts),
         system=SYSTEM,
         temperature=0.2,
-    )
-    return " ".join(text.split())
+    ).split())
+    _store(key, text)
+    return text
 
 
 def reasoning_steps(profile: Profile, decisions: list[Decision]) -> list[dict]:
@@ -185,7 +217,7 @@ def reasoning_steps(profile: Profile, decisions: list[Decision]) -> list[dict]:
     if profile.documents:
         steps.append({
             "kind": "heard",
-            "label": "Documents he has",
+            "label": "Documents they have",
             "detail": ", ".join(profile.documents),
         })
 
@@ -219,7 +251,7 @@ def reasoning_steps(profile: Profile, decisions: list[Decision]) -> list[dict]:
                 "scheme": decision.scheme_name,
                 "label": f"Found a path: {len(decision.ladder)} steps",
                 "detail": f"₹{decision.total_cost_rupees:.0f} · {decision.total_time_days} days",
-                "steps": [s.model_dump() for s in decision.ladder],
+                "steps": [s.model_dump(mode="json") for s in decision.ladder],
             })
 
     return steps
