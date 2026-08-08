@@ -29,7 +29,7 @@ personas:
       state: Karnataka
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
-      eligible: [pm_svanidhi, pmsby, fssai_basic]
+      eligible: [pm_svanidhi, pmsby, pmjjby, fssai_basic]
 
   - id: ramesh_no_cov
     note: The demo persona. Missing vending proof and UPI - both fixable.
@@ -45,7 +45,7 @@ personas:
       state: Karnataka
       documents: [aadhaar, bank_account]
     expect:
-      eligible: [pmsby, fssai_basic]
+      eligible: [pmsby, pmjjby, fssai_basic]
       ladder: [pm_svanidhi]
 
   - id: vendor_lor_holder
@@ -61,7 +61,7 @@ personas:
       state: Bihar
       documents: [aadhaar, bank_account, upi_id, letter_of_recommendation]
     expect:
-      eligible: [pm_svanidhi, pmsby, fssai_basic]
+      eligible: [pm_svanidhi, pmsby, pmjjby, fssai_basic]
 
   - id: vendor_nothing
     note: No documents at all. Every gap is fixable, so a full ladder.
@@ -76,7 +76,7 @@ personas:
       state: Uttar Pradesh
       documents: []
     expect:
-      ladder: [pm_svanidhi, pmsby]
+      ladder: [pm_svanidhi, pmsby, pmjjby]
       eligible: [fssai_basic]
 
   - id: vendor_bank_only
@@ -92,8 +92,9 @@ personas:
       state: Maharashtra
       documents: [bank_account, upi_id]
     expect:
-      eligible: [pmsby]
+      eligible: [pmsby, pmjjby]
       ladder: [pm_svanidhi]
+      blocked: [fssai_basic]     # sells flowers, not food
 
   # ── Age boundaries on PMSBY ──────────────────────────────────────────────
   - id: too_young
@@ -110,7 +111,7 @@ personas:
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
       eligible: [pm_svanidhi, fssai_basic]
-      blocked: [pmsby]
+      blocked: [pmsby, pmjjby]
 
   - id: too_old
     note: 74. Over the PMSBY ceiling. Must not be offered a false path.
@@ -126,7 +127,7 @@ personas:
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
       eligible: [pm_svanidhi, fssai_basic]
-      blocked: [pmsby]
+      blocked: [pmsby, pmjjby]
 
   - id: exactly_eighteen
     note: Boundary. 18 is inclusive.
@@ -141,7 +142,7 @@ personas:
       state: Gujarat
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
-      eligible: [pm_svanidhi, pmsby, fssai_basic]
+      eligible: [pm_svanidhi, pmsby, pmjjby, fssai_basic]
 
   - id: exactly_seventy
     note: Boundary. 70 is inclusive.
@@ -157,6 +158,7 @@ personas:
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
       eligible: [pm_svanidhi, pmsby, fssai_basic]
+      blocked: [pmjjby]          # 70 is past the PMJJBY entry age of 50
 
   # ── Non-vendors: must NOT be offered PM SVANidhi ─────────────────────────
   - id: tailor
@@ -172,7 +174,7 @@ personas:
       state: Maharashtra
       documents: [aadhaar, bank_account, upi_id]
     expect:
-      eligible: [pmsby]
+      eligible: [pmsby, pmjjby]
       blocked: [pm_svanidhi, fssai_basic]
 
   - id: farmer
@@ -187,7 +189,7 @@ personas:
       state: Madhya Pradesh
       documents: [aadhaar, bank_account]
     expect:
-      eligible: [pmsby]
+      eligible: [pmsby, pmjjby]
       blocked: [pm_svanidhi, fssai_basic]
 
   - id: auto_driver
@@ -202,7 +204,7 @@ personas:
       state: Telangana
       documents: [aadhaar, bank_account, upi_id]
     expect:
-      eligible: [pmsby]
+      eligible: [pmsby, pmjjby]
       blocked: [pm_svanidhi, fssai_basic]
 
   - id: shopkeeper
@@ -219,7 +221,7 @@ personas:
       documents: [aadhaar, bank_account, upi_id]
     expect:
       eligible: [pmsby, fssai_basic]
-      blocked: [pm_svanidhi]
+      blocked: [pm_svanidhi, pmjjby]   # 52 is past the PMJJBY entry age
 
   # ── FSSAI turnover boundary ──────────────────────────────────────────────
   - id: high_turnover_caterer
@@ -235,7 +237,7 @@ personas:
       state: Delhi
       documents: [aadhaar, bank_account, upi_id]
     expect:
-      eligible: [pmsby]
+      eligible: [pmsby, pmjjby]
       blocked: [fssai_basic, pm_svanidhi]
 
   - id: already_fssai_registered
@@ -251,7 +253,7 @@ personas:
       state: Karnataka
       documents: [aadhaar, bank_account, upi_id, fssai, vending_certificate]
     expect:
-      eligible: [pm_svanidhi, pmsby]
+      eligible: [pm_svanidhi, pmsby, pmjjby]
       blocked: [fssai_basic]
 
   # ── Missing information: must ASK, never reject ──────────────────────────
@@ -268,7 +270,7 @@ personas:
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
       eligible: [pm_svanidhi, fssai_basic]
-      need_info: [pmsby]
+      need_info: [pmsby, pmjjby]
 
   - id: no_occupation_stated
     slice: {gender: female, state: Bihar, urban: false}
@@ -279,7 +281,7 @@ personas:
       state: Bihar
       documents: [aadhaar, bank_account, upi_id]
     expect:
-      eligible: [pmsby]
+      eligible: [pmsby, pmjjby]
       need_info: [pm_svanidhi, fssai_basic]
 
   - id: no_income_stated
@@ -294,7 +296,7 @@ personas:
       state: Uttar Pradesh
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
-      eligible: [pm_svanidhi, pmsby]
+      eligible: [pm_svanidhi, pmsby, pmjjby]
       need_info: [fssai_basic]
 
   # ── Regression cases from real bugs ──────────────────────────────────────
@@ -313,7 +315,7 @@ personas:
       has_existing_loan: true
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
-      eligible: [pm_svanidhi, pmsby, fssai_basic]
+      eligible: [pm_svanidhi, pmsby, pmjjby, fssai_basic]
 
   - id: female_vendor_identical_to_male
     note: Same facts as ramesh_full but female. Any difference is a bug.
@@ -330,4 +332,21 @@ personas:
       state: Karnataka
       documents: [aadhaar, bank_account, upi_id, vending_certificate]
     expect:
+      eligible: [pm_svanidhi, pmsby, pmjjby, fssai_basic]
+
+  # ── PMSBY vs PMJJBY age bands: the engine must discriminate, not rubber-stamp
+  - id: older_vendor_accident_only
+    note: 58. Inside PMSBY's 18-70 band, outside PMJJBY's 18-50 entry age.
+    slice: {gender: male, state: Karnataka, urban: true}
+    profile:
+      age: 58
+      occupation: dosa cart
+      occupation_category: street_vendor
+      sells_food: true
+      daily_income: 700
+      city: Bangalore
+      state: Karnataka
+      documents: [aadhaar, bank_account, upi_id, vending_certificate]
+    expect:
       eligible: [pm_svanidhi, pmsby, fssai_basic]
+      blocked: [pmjjby]

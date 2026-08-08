@@ -1,10 +1,11 @@
 {
-  "total_chunks": 622,
+  "total_chunks": 642,
   "documents": [
     "ApplicationForm.pdf",
     "ClaimForm.pdf",
     "FSSAI_Licensing_Registration_Regulations_2011.pdf",
     "Loan Operations Guidelines.pdf",
+    "PMJJBY Rules.pdf",
     "PMSBY Guidelines.pdf",
     "SOP PMSBY.pdf",
     "Scheme Guidelines.pdf",
@@ -13,6 +14,7 @@
   "schemes": [
     "fssai_basic",
     "pm_svanidhi",
+    "pmjjby",
     "pmsby",
     "unclassified"
   ],

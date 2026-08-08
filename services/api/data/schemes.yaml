@@ -250,6 +250,81 @@ schemes:
             same account also unlocks PM SVANidhi disbursal, so this one step
             clears two schemes. A post office savings account also qualifies.
 
+  # ── PMJJBY: life cover. Pairs with PMSBY (accident) to complete the safety
+  #    net. Note the entry band is 18-50, NARROWER than PMSBY's 18-70 — so an
+  #    older vendor qualifies for one and not the other, which is a good check
+  #    that the engine actually discriminates rather than rubber-stamping.
+  #
+  #    NOTE: this PDF is the 2015 original and states a Rs 330 premium. It was
+  #    revised later (widely reported as Rs 436). We cite the document we have,
+  #    but verify before the demo — the same caveat applied to PMSBY.
+  - id: pmjjby
+    name: PMJJBY
+    full_name: Pradhan Mantri Jeevan Jyoti Bima Yojana
+    category: insurance
+    priority: 4
+    benefit_summary: >-
+      Rs 2 lakh life cover payable on death from any cause, for a premium of
+      Rs 330 per year auto-debited from your savings account. Renewable yearly.
+    benefit_amount_rupees: 200000
+    benefit_detail:
+      premium_per_year_rupees: 330
+      cover_rupees: 200000
+      cause_of_death: any cause
+      entry_age: 18 to 50
+      cover_ends_at_age: 55
+      renewal: annual, cover runs 1st June to 31st May
+    source_docs:
+      - PMJJBY Rules.pdf
+
+    rules:
+      - id: pmjjby_min_age
+        description: Must be at least 18 years old
+        field: age
+        op: gte
+        value: 18
+        source_doc: PMJJBY Rules.pdf
+        source_page: 2
+        source_quote: >-
+          The savings bank account holders of the participating banks aged
+          between 18 years (completed) and 50 years (age nearer birthday) who
+          give their consent to join / enable auto-debit will be enrolled into
+          the scheme.
+        remedy: null
+
+      - id: pmjjby_max_age
+        description: Must be 50 or younger to join
+        field: age
+        op: lte
+        value: 50
+        source_doc: PMJJBY Rules.pdf
+        source_page: 2
+        source_quote: >-
+          Entry, however, will not be possible beyond the age of 50 years. The
+          assurance terminates on attaining age 55 years.
+        remedy: null   # nobody can act their way out of an age limit
+
+      - id: pmjjby_savings_account
+        description: Must hold a savings bank account for auto-debit of the premium
+        field: documents
+        op: contains
+        value: bank_account
+        source_doc: PMJJBY Rules.pdf
+        source_page: 1
+        source_quote: >-
+          Premium: Rs.330/- per annum per member. The premium will be deducted
+          from the account holder's savings bank account through 'auto debit'
+          facility in one installment.
+        remedy:
+          action: Open a zero-balance Jan Dhan savings account
+          cost_rupees: 0
+          time_days: 2
+          where: Any bank branch or Bank Mitra / business correspondent
+          detail: >-
+            A PMJDY account needs only Aadhaar and has no minimum balance. The
+            same account also satisfies PMSBY and PM SVANidhi, so this one step
+            clears three schemes.
+
   # ── FSSAI: the second rung for a food vendor. The Regulations define a petty
   #    food manufacturer as "a petty retailer, hawker, itinerant vendor or
   #    temporary stall holder" — the statute describes our user exactly.

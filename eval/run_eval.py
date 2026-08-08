@@ -67,6 +67,11 @@ def evaluate_persona(persona: dict) -> dict:
         if actual.get(s) != expected[s]
     ]
 
+    # Every live scheme must be asserted on. An unannotated scheme scores as a
+    # false positive and looks like an engine defect when it is really a gap in
+    # the ground truth - which is worse than a visible failure.
+    unannotated = sorted(set(actual) - set(expected))
+
     # Ladders must actually work — a path that doesn't reach eligibility is
     # worse than no path, because a real person spends real days on it.
     bad_ladders = [
@@ -82,7 +87,8 @@ def evaluate_persona(persona: dict) -> dict:
         "actual": actual,
         "mismatches": mismatches,
         "bad_ladders": bad_ladders,
-        "passed": not mismatches and not bad_ladders,
+        "unannotated": unannotated,
+        "passed": not mismatches and not bad_ladders and not unannotated,
         "latency_ms": elapsed_ms,
     }
 
@@ -191,6 +197,8 @@ def main() -> int:
                 print(f"        {m['scheme']}: expected {m['expected']}, got {m['actual']}")
             for scheme in r["bad_ladders"]:
                 print(f"        {scheme}: LADDER DOES NOT LEAD TO ELIGIBILITY")
+            for scheme in r.get("unannotated", []):
+                print(f"        {scheme}: no expectation written for this scheme")
     else:
         print("\n  All personas passed.")
 
