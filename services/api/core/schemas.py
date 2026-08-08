@@ -153,6 +153,7 @@ class RetrievedChunk(BaseModel):
 class QueryRequest(BaseModel):
     text: str
     language: str = "hi"
+    user_id: str = "demo"
 
 
 class QueryResponse(BaseModel):

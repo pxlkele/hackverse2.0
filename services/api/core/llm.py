@@ -22,6 +22,11 @@ BACKEND = os.getenv("SETU_LLM_BACKEND", "ollama")
 
 TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 
+# Keep both models resident. Without this Ollama evicts one model to load the
+# other on every request, and a query that should take 3s takes 30 — the chat
+# and embedding models are used back-to-back on every single query.
+KEEP_ALIVE = os.getenv("SETU_KEEP_ALIVE", "30m")
+
 # Granite is well-behaved about JSON but not perfectly — it occasionally wraps
 # output in a markdown fence. Cheaper to strip that than to retry the call.
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
@@ -48,6 +53,7 @@ def chat(prompt: str, system: str | None = None, temperature: float = 0.0) -> st
                 "model": CHAT_MODEL,
                 "messages": messages,
                 "stream": False,
+                "keep_alive": KEEP_ALIVE,
                 "options": {"temperature": temperature},
             },
         )
@@ -80,6 +86,7 @@ def chat_json(
         "model": CHAT_MODEL,
         "messages": messages,
         "stream": False,
+        "keep_alive": KEEP_ALIVE,
         "options": {"temperature": 0.0},
         "format": schema if schema else "json",
     }
@@ -104,10 +111,20 @@ def embed(text: str) -> list[float]:
     with httpx.Client(timeout=TIMEOUT) as client:
         response = client.post(
             f"{OLLAMA_URL}/api/embeddings",
-            json={"model": EMBED_MODEL, "prompt": text},
+            json={"model": EMBED_MODEL, "prompt": text, "keep_alive": KEEP_ALIVE},
         )
         response.raise_for_status()
         return response.json()["embedding"]
+
+
+def warm() -> None:
+    """Load both models before the first real query. Call this at startup —
+    the first call is always slow and on stage it looks like a hang."""
+    try:
+        chat("ok", temperature=0.0)
+        embed("warm")
+    except Exception:
+        pass
 
 
 def health() -> dict[str, Any]:

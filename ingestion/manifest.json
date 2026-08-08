@@ -1,12 +1,24 @@
 {
-  "total_chunks": 85,
+  "total_chunks": 700,
   "documents": [
+    "20260808102809469_1. Implementation Guidelines Finalised.pdf",
+    "20260808102853996_Administrative Approval for Plan Scheme E-t-E Computerization.pdf",
+    "ApplicationForm.pdf",
+    "ClaimForm.pdf",
+    "FSSAI_Licensing_Registration_Regulations_2011.pdf",
+    "Licensing_Regulations_ FSSAI.pdf",
     "Loan Operations Guidelines.pdf",
+    "PMSBY Rules.pdf",
+    "SOP PMSBY.pdf",
     "Scheme Guidelines.pdf",
-    "Street Food Hubs Guidelines.pdf"
+    "Street Food Hubs Guidelines.pdf",
+    "TatkalRegistration.pdf"
   ],
   "schemes": [
-    "pm_svanidhi"
+    "fssai_basic",
+    "pm_svanidhi",
+    "pmsby",
+    "unclassified"
   ],
   "embed_model": "granite-embedding:278m"
 }

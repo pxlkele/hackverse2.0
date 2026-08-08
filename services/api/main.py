@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .core import eligibility, llm, pathfinder, profile as profile_mod, rag
+from .core import eligibility, llm, pathfinder, profile as profile_mod, rag, store
 from .core.schemas import Profile, QueryRequest, QueryResponse, TrustTrace
 
 app = FastAPI(title="Setu API", version="0.1.0")
@@ -28,6 +28,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def _warm_models() -> None:
+    """Preload Granite so the first judge-facing query isn't the slow one."""
+    llm.warm()
 
 
 @app.get("/api/health")
@@ -87,6 +93,16 @@ def query(request: QueryRequest):
         schemes_version=eligibility.schemes_version(),
     )
 
+    store.log_query(
+        query_id=trace.query_id,
+        user_id=request.user_id,
+        text=request.text,
+        language=request.language,
+        profile=user_profile,
+        decisions=decisions,
+        fingerprint=trace.fingerprint(),
+    )
+
     return QueryResponse(
         query_id=trace.query_id,
         profile=user_profile,
@@ -105,7 +121,43 @@ def query(request: QueryRequest):
     )
 
 
-# Dashboard is served from here once it exists, so there's one thing to run.
-DASHBOARD = Path(__file__).resolve().parent.parent.parent / "apps" / "web"
-if DASHBOARD.exists():
-    app.mount("/", StaticFiles(directory=str(DASHBOARD), html=True), name="web")
+
+# ── Case store / dashboard endpoints (ported from Sanvi's agent.py) ──────────
+
+@app.get("/api/stats")
+def stats():
+    return store.stats()
+
+
+@app.get("/api/logs")
+def logs(limit: int = 50):
+    return store.recent_queries(limit)
+
+
+@app.get("/api/gaps")
+def gaps(limit: int = 50):
+    """Unmatched needs — the Demand Signal."""
+    return store.coverage_gaps(limit)
+
+
+@app.post("/api/cases/{scheme_id}")
+def start_case(scheme_id: str, request: QueryRequest, user_id: str = "demo"):
+    """Turn a ladder into tracked commitments with due dates."""
+    user_profile = profile_mod.extract(request.text, language=request.language)
+    decisions = pathfinder.build_all(user_profile, eligibility.evaluate_all(user_profile))
+    target = next((d for d in decisions if d.scheme_id == scheme_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"no decision for {scheme_id}")
+    return {"steps_created": store.open_case(user_id, target)}
+
+
+@app.get("/api/cases/due")
+def cases_due(as_of: str | None = None):
+    """as_of lets the demo time-warp without waiting days."""
+    return store.due_cases(as_of)
+
+
+# Mounted last: a mount at "/" swallows every route declared after it.
+WEB = Path(__file__).resolve().parent.parent.parent / "apps" / "web"
+if WEB.exists():
+    app.mount("/", StaticFiles(directory=str(WEB), html=True), name="web")
