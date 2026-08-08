@@ -154,10 +154,12 @@
 const T = {
   hi: { prompt:'अपने बारे में बताइए', talk:'बोलिए', stop:'रोकिए', listening:'सुन रहे हैं…',
         thinking:'सरकारी नियम देख रहे हैं…', replay:'फिर से सुनिए', human:'किसी व्यक्ति से बात करें',
-        err:'दोबारा कोशिश कीजिए', free:'मुफ़्त', days:'दिन', steps:'कदम' },
+        err:'दोबारा कोशिश कीजिए', free:'मुफ़्त', days:'दिन', steps:'कदम',
+        denied:'माइक की इजाज़त दीजिए', insecure:'यह पेज सुरक्षित नहीं है' },
   en: { prompt:'Tell us about your work', talk:'Speak', stop:'Stop', listening:'Listening…',
         thinking:'Checking government rules…', replay:'Play again', human:'Talk to a person',
-        err:'Please try again', free:'free', days:'days', steps:'steps' },
+        err:'Please try again', free:'free', days:'days', steps:'steps',
+        denied:'Please allow the microphone', insecure:'This page needs HTTPS for the mic' },
 };
 
 let lang = 'hi', callId = null, recorder = null, chunks = [], lastAudio = null;
@@ -245,21 +247,44 @@ function render(turn) {
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+/* The recording format is not ours to choose: Chrome gives webm/opus, iOS
+   Safari gives mp4/aac whatever we ask for. The server names its temp file
+   from the extension we send, so a hardcoded ".webm" hands Whisper a
+   mislabelled container on an iPhone. Ask the recorder what it produced. */
+const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+const pickMime = () => (window.MediaRecorder && MediaRecorder.isTypeSupported)
+  ? (MIME_CANDIDATES.find(m => MediaRecorder.isTypeSupported(m)) || '') : '';
+const extFor = m => m.includes('mp4') ? 'mp4' : m.includes('ogg') ? 'ogg' : 'webm';
+
+// A tap that never gets its second tap must still end by itself. Someone who
+// gets distracted mid-sentence would otherwise record until the tab dies, and
+// Whisper would then grind through minutes of cart noise on stage.
+const MAX_MS = 45000;
+let capTimer = null;
+
 async function startRec() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  recorder = new MediaRecorder(stream);
+  const wanted = pickMime();
+  recorder = new MediaRecorder(stream, wanted ? { mimeType: wanted } : {});
+
+  // Captured now, not read in onstop: the tap handler nulls `recorder` the
+  // moment it calls stop(), and the browser may ignore what we asked for.
+  const outType = recorder.mimeType || wanted || 'audio/webm';
+
   chunks = [];
-  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   recorder.onstop = async () => {
+    clearTimeout(capTimer);
     stream.getTracks().forEach(s => s.stop());
     $('talk').classList.remove('rec');
+    $('talk').disabled = true;      // a second tap mid-pipeline would start a second call
     $('talkLabel').textContent = t().talk;
     $('status').textContent = t().thinking;
     $('status').classList.add('thinking');
     try {
       const fd = new FormData();
       fd.append('call_id', await ensureCall());
-      fd.append('audio', new Blob(chunks, { type: 'audio/webm' }), 'clip.webm');
+      fd.append('audio', new Blob(chunks, { type: outType }), 'clip.' + extFor(outType));
       render((await api('/api/ivr/speech', fd, true)).turn);
       $('status').textContent = '';
     } catch (e) {
@@ -271,6 +296,9 @@ async function startRec() {
     }
   };
   recorder.start();
+  capTimer = setTimeout(() => {
+    if (recorder && recorder.state === 'recording') { recorder.stop(); recorder = null; }
+  }, MAX_MS);
   $('talk').classList.add('rec');
   $('talkLabel').textContent = t().stop;
   $('status').textContent = t().listening;
@@ -282,10 +310,19 @@ $('talk').onclick = async () => {
   if (recorder && recorder.state === 'recording') { recorder.stop(); recorder = null; return; }
   say(t().talk);
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no-mic-api');
     await ensureCall();
     await startRec();
   } catch (e) {
-    $('status').textContent = t().err;
+    /* Three failures look identical on screen but need different words. A
+       blocked mic the caller can fix; a page served over plain http:// has no
+       getUserMedia at all and only we can fix it — and silently showing
+       "try again" for that would have us debugging the wrong thing on stage. */
+    const insecure = !window.isSecureContext || e.message === 'no-mic-api';
+    const denied = e.name === 'NotAllowedError' || e.name === 'SecurityError';
+    $('status').textContent = insecure ? t().insecure : denied ? t().denied : t().err;
+    say($('status').textContent);
+    recorder = null;
   }
 };
 

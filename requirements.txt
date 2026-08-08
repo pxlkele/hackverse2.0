@@ -13,7 +13,13 @@ python-dotenv==1.0.1
 pydantic==2.9.2
 apscheduler==3.10.4
 faster-whisper==1.0.3
-edge-tts==6.1.12
+# 7.x, not 6.1.12: Microsoft now answers 6.1.12's handshake with 403, which
+# breaks every spoken answer in the project. The venv was upgraded during the
+# build; this pin was left behind, so a fresh clone had no voice output at all.
+edge-tts==7.2.8
 httpx==0.28.1
 PyYAML==6.0.3
 python-multipart==0.0.32
+# Here rather than a dev file: a fresh clone should be able to prove itself
+# green before demo day, and that is the only reason we install it.
+pytest==9.1.1
