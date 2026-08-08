@@ -89,7 +89,7 @@ different."*
 
 > **Step 1** — Letter of Recommendation from the Town Vending Committee · ₹0 · ~7 days
 > **Step 2** — Open PM SVANidhi application with the LoR · ₹0 · same day
-> **→ Unlocks ₹10,000 at subsidised interest, then ₹20,000, then ₹50,000**
+> **→ Unlocks ₹15,000 at 7% interest subsidy, then ₹25,000, then ₹50,000**
 
 **Palak:** *"Two steps. Zero rupees. About a week. That's the difference between
 'you're ineligible' and a person actually getting money."*
@@ -202,7 +202,7 @@ second customer."*
 **The closing line — land this cleanly and stop talking:**
 
 > *"Setu isn't a scheme finder. Setu makes invisible people underwritable.
-> Ramesh went from uncreditworthy to two steps and seven days away from ₹10,000
+> Ramesh went from uncreditworthy to two steps and seven days away from ₹15,000
 > — and he never read a single word."*
 
 ---

@@ -1,0 +1,182 @@
+version: "0.1.0"
+
+# Setu scheme catalogue.
+#
+# THIS FILE DECIDES WHO IS ELIGIBLE. The LLM never does.
+#
+# Every rule carries:
+#   source_doc / source_page / source_quote  -> the citation shown in the "Why?" panel
+#   remedy                                   -> how a failing rule gets fixed
+#
+# The `remedy` block is what makes the ladder possible. A rule without one is a
+# dead end; a rule with one is a rung. When adding a scheme, write the remedy
+# even if it feels obvious — the pathfinder can only offer what is written here.
+#
+# Rule operators: eq, ne, gt, gte, lt, lte, in, not_in, contains, not_contains, is_true, is_false
+# A rule whose field is missing from the profile evaluates to None -> NEED_INFO.
+
+schemes:
+  - id: pm_svanidhi
+    name: PM SVANidhi
+    full_name: PM Street Vendor's AtmaNirbhar Nidhi
+    category: credit
+    priority: 1
+    benefit_summary: >-
+      Collateral-free working capital loan in three tranches — ₹15,000, then
+      ₹25,000, then ₹50,000 — with 7% annual interest subsidy and up to ₹400/year
+      cashback for digital transactions.
+    benefit_amount_rupees: 15000
+    benefit_detail:
+      tranches:
+        - amount: 15000
+          repayment_months: 12
+        - amount: 25000
+          repayment_months: 18
+          requires: timely repayment of tranche 1
+        - amount: 50000
+          repayment_months: 36
+          requires: timely repayment of tranche 2
+      interest_subsidy_percent: 7
+      cashback_max_per_year: 400
+      cashback_condition: digital transactions on wholesale purchases of at least ₹2,000
+      collateral_required: false
+    source_docs:
+      - Scheme Guidelines.pdf
+      - Loan Operations Guidelines.pdf
+
+    rules:
+      - id: svanidhi_is_street_vendor
+        description: Applicant must be a street vendor
+        field: occupation_category
+        op: eq
+        value: street_vendor
+        source_doc: Scheme Guidelines.pdf
+        source_page: 11
+        source_quote: >-
+          A 'Street Vendor' means a person engaged in vending of articles, goods,
+          wares, food items or merchandise of everyday use.
+        remedy: null   # cannot be remedied — this is who the scheme is for
+
+      - id: svanidhi_vending_proof
+        description: Must hold a Certificate of Vending, ULB ID card, or Letter of Recommendation
+        field: documents
+        op: contains_any
+        value: [vending_certificate, ulb_id_card, letter_of_recommendation]
+        source_doc: Scheme Guidelines.pdf
+        source_page: 3
+        source_quote: >-
+          In statutory towns, the Certificate of Vending (CoV)/Identity Card/Letter
+          of Recommendation is the basis for identifying eligible vendors.
+        # ── THE LADDER RUNG. This is the rule most vendors fail, and the one
+        #    with a real, cheap, fast fix. It is the centrepiece of the demo.
+        remedy:
+          action: Get a Letter of Recommendation (LoR) from your Town Vending Committee or ULB
+          cost_rupees: 0
+          time_days: 7
+          where: Urban Local Body office, or the Block Development Officer for peri-urban areas
+          detail: >-
+            Category C covers vendors left out of the ULB survey or who started
+            vending after it was completed. They can apply for a Letter of
+            Recommendation, which the scheme accepts in place of a Certificate of
+            Vending. Once the BDO issues the LoR, the application is forwarded to
+            the bank automatically.
+          source_page: 18
+          source_quote: >-
+            Category C: SVs left out of the ULB-led identification survey or who
+            have started vending after completion of the survey.
+
+      - id: svanidhi_bank_account
+        description: Must have a bank account for loan disbursal
+        field: documents
+        op: contains
+        value: bank_account
+        source_doc: Loan Operations Guidelines.pdf
+        source_page: 14
+        source_quote: >-
+          The application will be sent to the bank for further processing aligning
+          to the operational guidelines of availing loans.
+        remedy:
+          action: Open a zero-balance Jan Dhan bank account
+          cost_rupees: 0
+          time_days: 2
+          where: Any bank branch or Bank Mitra / business correspondent
+          detail: >-
+            A PMJDY account needs only Aadhaar and has no minimum balance
+            requirement.
+
+      - id: svanidhi_aadhaar
+        description: Must have Aadhaar for identification and e-KYC
+        field: documents
+        op: contains
+        value: aadhaar
+        source_doc: Scheme Guidelines.pdf
+        source_page: 3
+        source_quote: >-
+          Identification of eligible vendors is carried out by Urban Local Bodies
+          using survey and identity records.
+        remedy:
+          action: Enrol for Aadhaar at a nearby enrolment centre
+          cost_rupees: 0
+          time_days: 30
+          where: Aadhaar Seva Kendra or a bank/post-office enrolment centre
+          detail: First-time enrolment is free. Allow up to 30 days for generation.
+
+      - id: svanidhi_no_npa
+        description: Must not have an existing loan classified as NPA or written off
+        field: has_existing_loan_npa
+        op: is_false
+        value: true
+        source_doc: Loan Operations Guidelines.pdf
+        source_page: 6
+        source_quote: >-
+          LIs may decline applications where the applicant has an existing loan
+          account classified as a Non-Performing Asset (NPA) or has been written
+          off by any LI.
+        optional: true   # absence of information should not block a match
+        remedy:
+          action: Settle or regularise the defaulted loan with your lender
+          cost_rupees: 0
+          time_days: 90
+          where: The bank holding the defaulted account
+          detail: >-
+            Note that simply having a current loan is fine — only accounts
+            classified as NPA or written off are a problem.
+
+  # ── FSSAI: a clean second rung for any vendor selling food. Rules below are
+  #    placeholders until the Licensing & Registration Regulations 2011 are
+  #    ingested. DO NOT DEMO THESE NUMBERS until the citations resolve.
+  - id: fssai_basic
+    name: FSSAI Basic Registration
+    full_name: Food Safety and Standards Basic Registration (Petty Food Business Operator)
+    category: licence
+    priority: 2
+    status: draft            # excluded from decisions while true
+    benefit_summary: >-
+      Legal registration to sell food, required for street food vendors and a
+      prerequisite for several municipal permissions.
+    source_docs:
+      - TatkalRegistration.pdf
+    rules:
+      - id: fssai_sells_food
+        description: Applicant must sell food items
+        field: sells_food
+        op: is_true
+        value: true
+        source_doc: TatkalRegistration.pdf
+        source_page: 1
+        source_quote: PENDING — ingest FSSAI Licensing & Registration Regulations 2011
+        remedy: null
+      - id: fssai_turnover_under_limit
+        description: Annual turnover must be below the petty food business operator threshold
+        field: annual_turnover
+        op: lt
+        value: 1200000
+        source_doc: TatkalRegistration.pdf
+        source_page: 1
+        source_quote: PENDING — verify threshold against Schedule 1 of the Regulations
+        remedy:
+          action: Apply for an FSSAI State Licence instead of Basic Registration
+          cost_rupees: 2000
+          time_days: 30
+          where: foscos.fssai.gov.in
+          detail: Above the petty-FBO threshold a full licence is required.
