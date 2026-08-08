@@ -1,0 +1,17 @@
+*** PLACEHOLDER / UNVERIFIED - DO NOT USE FOR THE ACTUAL DEMO ***
+This file exists only so you can smoke-test ingest.py + rag.py before you've
+sourced real government PDFs. Figures below are approximate/illustrative and
+may be outdated. Replace this file with the actual PMEGP guidelines PDF
+(from kviconline.gov.in or the official PMEGP portal) before building your
+real knowledge base - Setu's entire pitch is "grounded in verified sources,"
+so demoing on placeholder text would undercut your own differentiation claim.
+
+Scheme (illustrative): Prime Minister's Employment Generation Programme (PMEGP)
+Purpose: Credit-linked subsidy to help set up new micro-enterprises (manufacturing
+and service, including small trades like tailoring) for first-time entrepreneurs.
+Illustrative eligibility: individuals 18+, no prior income-tax-financed government
+subsidy for a similar unit, willingness to contribute a small margin amount.
+Illustrative documents needed: ID proof, address proof, project report, caste/
+category certificate if applicable, bank account details.
+Illustrative subsidy: a portion of the project cost as subsidy, remainder as bank
+term loan, varying by category (general/SC/ST/OBC/women) and area (urban/rural).
