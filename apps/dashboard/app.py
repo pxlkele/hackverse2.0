@@ -1,193 +1,206 @@
 """
-Setu - internal ops dashboard.
+Setu — operator console.
 
-Doubles as: (1) your dev tool for watching RAG retrieval + Granite output
-while you build, (2) your judge-facing demo screen once voice is wired in
-(the "Try a query" tab is where the mic button will land), (3) a live view
-of two things you're pitching as differentiators - coverage-gap learning and
-proactive re-matching - so you can point at real numbers instead of just
-describing them.
+    streamlit run apps/dashboard/app.py
 
-Run:
-    streamlit run dashboard/app.py
+Two tabs, two audiences:
+  Ask Setu — what a CSC operator or Bank Mitra sees while helping someone.
+             The vendor never sees this; he only hears the audio at the end.
+  Impact   — evidence for the pitch: match rate, coverage gaps.
+
+The reasoning panel reveals real rule evaluations one at a time. Nothing here
+is staged — every tick is a rule that actually fired, with the government
+document it came from. The pacing exists so a human can read it, not to
+manufacture suspense.
 """
-import os
-import sys
-import json
+
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+import httpx
 import pandas as pd
 import streamlit as st
 
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from backend import agent, rag
+API = "http://localhost:8000/api"
+REVEAL_DELAY = 0.35  # seconds per line — readable without dragging
 
-st.set_page_config(page_title="Setu - Ops Dashboard", layout="wide")
-st.title("Setu - Live Ops Dashboard")
+st.set_page_config(page_title="Setu", page_icon="🪜", layout="wide")
 
-tab_overview, tab_query, tab_logs, tab_reminders, tab_rematch = st.tabs(
-    ["Overview", "Try a query", "Query log", "Reminders", "Re-match preview"]
+st.markdown(
+    """
+    <style>
+      .rule-pass { color:#1a7f37; font-weight:600; }
+      .rule-fail { color:#b3261e; font-weight:600; }
+      .rule-unknown { color:#8a6d00; font-weight:600; }
+      .cite { color:#666; font-size:0.78rem; font-family:ui-monospace,monospace; }
+      .rung { border-left:3px solid #1a7f37; padding:0.4rem 0 0.4rem 0.9rem; margin:0.5rem 0; }
+      .big { font-size:1.6rem; font-weight:700; }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-# ---------------------------------------------------------------------------
-# Overview
-# ---------------------------------------------------------------------------
-with tab_overview:
-    st.subheader("Pipeline health")
-    s = agent.stats()
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total queries", s["total_queries"])
-    col2.metric("Matched", s["matched_queries"])
-    col3.metric("Match rate", f"{s['match_rate'] * 100:.0f}%")
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.markdown("**Confidence breakdown**")
-        if s["confidence_breakdown"]:
-            df_conf = pd.DataFrame(
-                list(s["confidence_breakdown"].items()), columns=["confidence", "count"]
-            ).set_index("confidence")
-            st.bar_chart(df_conf)
-        else:
-            st.info("No queries yet.")
-
-    with c2:
-        st.markdown("**Top matched schemes**")
-        if s["top_schemes"]:
-            df_top = pd.DataFrame(s["top_schemes"], columns=["source", "matches"]).set_index(
-                "source"
-            )
-            st.bar_chart(df_top)
-        else:
-            st.info("No matches yet.")
-
-    st.markdown("---")
-    st.markdown("**Coverage gaps** - queries Setu could NOT ground in any indexed doc. "
-                "This is the queue for what real scheme docs to source next.")
-    if s["coverage_gaps"]:
-        st.dataframe(pd.DataFrame(s["coverage_gaps"]), use_container_width=True)
-    else:
-        st.info("No unmatched queries yet - either you're fully covered or nobody's tested edge cases.")
-
-    st.markdown("---")
-    st.markdown("**Knowledge base**")
+def api_get(path: str, **params):
     try:
-        indexed = rag.list_indexed_sources()
-    except Exception as e:
-        indexed = []
-        st.warning(f"Could not read Chroma collection: {e}")
-    if indexed:
-        st.write(f"{len(indexed)} document(s) indexed:")
-        st.write(", ".join(indexed))
-    else:
-        st.warning("Nothing indexed yet. Run `python backend/ingest.py` after adding real scheme docs.")
+        return httpx.get(f"{API}{path}", params=params, timeout=30).json()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"API unreachable — is uvicorn running on :8000?  ({exc})")
+        return None
 
-# ---------------------------------------------------------------------------
-# Try a query
-# ---------------------------------------------------------------------------
-with tab_query:
-    st.subheader("Simulate a user query (text stand-in for voice input)")
-    user_id = st.text_input("User ID", value="demo-user-1")
-    query_text = st.text_area(
-        "What is the user saying?", value="I run a tailoring shop, no loan history"
-    )
-    if st.button("Run through Setu"):
-        with st.spinner("Retrieving + reasoning..."):
-            try:
-                result = agent.process_query(user_id, query_text)
-            except Exception as e:
-                st.error(f"Pipeline error: {e}")
-                result = None
-        if result:
-            badge = "matched" if result.get("matched") else "no match"
-            st.markdown(f"### Answer  `{badge}`")
-            st.write(result["answer"])
-            st.markdown(f"**Confidence:** {result['confidence']}")
-            st.markdown(f"**Sources:** {', '.join(result['sources']) or 'none'}")
-            with st.expander("Retrieved chunks (raw RAG hits)"):
-                for h in result["hits"]:
-                    st.markdown(f"**{h['source']}** (distance {h['distance']:.3f})")
-                    st.text(h["text"][:500])
 
-# ---------------------------------------------------------------------------
-# Query log
-# ---------------------------------------------------------------------------
-with tab_logs:
-    st.subheader("Recent queries")
-    conn = agent.get_conn()
-    rows = conn.execute(
-        "SELECT timestamp, user_id, query_text, confidence, sources, matched "
-        "FROM queries ORDER BY id DESC LIMIT 100"
-    ).fetchall()
-    conn.close()
-    if rows:
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "time": r[0],
-                        "user": r[1],
-                        "query": r[2],
-                        "confidence": r[3],
-                        "sources": ", ".join(json.loads(r[4])),
-                        "matched": bool(r[5]),
-                    }
-                    for r in rows
-                ]
-            ),
-            use_container_width=True,
-        )
-    else:
-        st.info("No queries logged yet. Run one in the 'Try a query' tab.")
+def api_post(path: str, payload: dict, timeout: float = 180):
+    try:
+        return httpx.post(f"{API}{path}", json=payload, timeout=timeout).json()
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"API error: {exc}")
+        return None
 
-# ---------------------------------------------------------------------------
-# Reminders
-# ---------------------------------------------------------------------------
-with tab_reminders:
-    st.subheader("Add a reminder")
-    r_user = st.text_input("User ID ", value="demo-user-1")
-    r_scheme = st.text_input("Scheme name")
-    r_date = st.date_input("Due date")
-    if st.button("Add reminder"):
-        agent.add_reminder(r_user, r_scheme, str(r_date))
-        st.success("Reminder added.")
 
-    st.subheader("Due reminders")
-    due = agent.due_reminders()
-    if due:
-        st.table([{"id": d[0], "user": d[1], "scheme": d[2], "due": d[3]} for d in due])
-    else:
-        st.info("Nothing due today.")
+tab_ask, tab_impact = st.tabs(["🎙  Ask Setu", "📊  Impact"])
 
-# ---------------------------------------------------------------------------
-# Re-match preview
-# ---------------------------------------------------------------------------
-with tab_rematch:
-    st.subheader("Proactive re-matching preview")
-    st.caption(
-        "Demonstrates the 'Setu remembers what you've already accessed and "
-        "flags you for the next scheme' claim - compares what's indexed "
-        "against what this user has already been matched to."
-    )
-    rm_user = st.text_input("User ID to check", value="demo-user-1", key="rematch_user")
-    if st.button("Check for unclaimed schemes"):
-        profile = agent.get_profile(rm_user)
-        try:
-            indexed = rag.list_indexed_sources()
-        except Exception as e:
-            indexed = []
-            st.warning(f"Could not read Chroma collection: {e}")
-        unclaimed = sorted(set(indexed) - set(profile))
 
-        st.markdown(f"**Already matched:** {', '.join(profile) or 'none yet'}")
-        if unclaimed:
-            st.success(
-                f"{len(unclaimed)} indexed scheme(s) this user hasn't been matched to yet: "
-                f"{', '.join(unclaimed)}"
-            )
+# ── Tab 1: the demo ──────────────────────────────────────────────────────────
+
+with tab_ask:
+    st.markdown("### What did they say?")
+
+    SAMPLES = {
+        "Pani puri vendor, Bangalore (the demo)":
+            "Main 34 saal ka hoon, Bangalore mein pani puri ka thela chalata hoon. "
+            "Saat saal se yeh kaam kar raha hoon. Roz kareeb aath sau rupaye ka dhandha "
+            "hota hai. Mere paas Aadhaar card aur bank passbook hai, lekin vending "
+            "certificate nahi hai.",
+        "Tailor, no documents":
+            "Main darzi ka kaam karta hoon Pune mein. Mahine ka teen hazaar kamata hoon. "
+            "Koi document nahi hai mere paas.",
+        "Vendor with everything":
+            "Main 40 saal ka hoon, Delhi mein chaat ka thela lagata hoon. Roz hazaar ka "
+            "dhandha. Aadhaar, bank passbook, vending certificate aur PhonePe sab hai.",
+    }
+
+    choice = st.selectbox("Sample", list(SAMPLES) + ["— type my own —"])
+    default = "" if choice == "— type my own —" else SAMPLES[choice]
+    text = st.text_area("Their words", value=default, height=110, label_visibility="collapsed")
+
+    col_a, col_b, _ = st.columns([1, 1, 3])
+    lang = col_a.selectbox("Reply in", ["hi", "mr", "kn", "ta", "te", "bn", "en"])
+    go = col_b.button("▶  Run", type="primary", use_container_width=True)
+
+    if go and text.strip():
+        panel = st.container()
+        with panel:
+            st.markdown("---")
+            slot = st.empty()
+            slot.markdown("🎙  **Listening…**")
+
+            result = api_post("/reason", {"text": text, "language": lang})
+            if not result:
+                st.stop()
+
+            slot.markdown("🧠  **Thinking…**")
+            time.sleep(0.2)
+            slot.empty()
+
+            # ── the visible thought process ──────────────────────────────
+            for step in result["steps"]:
+                kind = step["kind"]
+
+                if kind == "heard":
+                    st.markdown(f"🧠  **{step['label']}** — {step['detail']}")
+
+                elif kind == "scheme":
+                    st.markdown("")
+                    st.markdown(f"📋  **Checking {step['label']}** · {step['detail']}")
+
+                elif kind == "rule":
+                    mark, cls = {
+                        True:  ("✓", "rule-pass"),
+                        False: ("✗", "rule-fail"),
+                        None:  ("⋯", "rule-unknown"),
+                    }[step["passed"]]
+                    left, right = st.columns([3, 2])
+                    left.markdown(
+                        f"&nbsp;&nbsp;&nbsp;<span class='{cls}'>{mark}</span> {step['label']}",
+                        unsafe_allow_html=True,
+                    )
+                    right.markdown(f"<span class='cite'>{step['citation']}</span>",
+                                   unsafe_allow_html=True)
+                    if step["quote"]:
+                        with st.expander("Why?", expanded=False):
+                            st.markdown(f"**Rule:** {step['expected']}")
+                            st.markdown(f"**Theirs:** {step['actual']}")
+                            st.info(f"“{step['quote']}”\n\n— {step['citation']}")
+
+                elif kind == "ladder":
+                    st.markdown("")
+                    st.success(f"🪜  **{step['label']}** · {step['detail']}")
+                    for rung in step["steps"]:
+                        cost = "free" if rung["cost_rupees"] == 0 else f"₹{rung['cost_rupees']:.0f}"
+                        st.markdown(
+                            f"<div class='rung'><b>{rung['order']}. {rung['action']}</b><br>"
+                            f"<span class='cite'>{cost} · {rung['time_days']} days · {rung['where']}</span><br>"
+                            f"{rung['detail']}</div>",
+                            unsafe_allow_html=True,
+                        )
+                time.sleep(REVEAL_DELAY)
+
+            # ── the answer he actually receives ──────────────────────────
+            st.markdown("---")
+            st.markdown("### 🔊  What he hears")
+            st.caption("He has no screen. This is the entire product from his side.")
+            st.markdown(f"<div class='big'>{result['spoken_text']}</div>", unsafe_allow_html=True)
+
+            audio = result.get("audio_path")
+            if audio and Path(audio).exists():
+                st.audio(audio, autoplay=True)
+            else:
+                st.warning("No audio — TTS unavailable. Text shown above.")
+
+            t = result["timings_ms"]
             st.caption(
-                "In production this is what triggers the proactive nudge - "
-                "this view is just making that logic visible, not sending anything."
+                f"trace `{result['trace_fingerprint']}` · "
+                + " · ".join(f"{k.replace('_ms','')} {v:.0f}ms" for k, v in t.items())
+                + f" · total {sum(t.values()):.0f}ms"
             )
-        else:
-            st.info("Nothing unclaimed - either fully covered or no queries run yet.")
+
+
+# ── Tab 2: evidence ──────────────────────────────────────────────────────────
+
+with tab_impact:
+    stats = api_get("/stats")
+    health = api_get("/health")
+
+    if stats:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("People helped", stats["users"])
+        c2.metric("Queries", stats["queries"])
+        c3.metric("Match rate", f"{stats['match_rate']*100:.0f}%")
+        c4.metric("Open cases", stats["open_cases"])
+
+    if health:
+        idx = health["index"]
+        st.caption(
+            f"Knowledge base: {idx['chunks']} chunks · {len(idx['documents'])} government "
+            f"documents · {len(idx['schemes'])} schemes · embeddings "
+            f"{health['llm']['embed_model']} · reasoning {health['llm']['chat_model']}"
+        )
+
+    st.markdown("#### Coverage gaps")
+    st.caption(
+        "Needs no scheme covered. Aggregated, this is a demand signal for "
+        "policymakers — what people ask for that nothing currently answers."
+    )
+    gaps = api_get("/gaps")
+    if gaps:
+        st.dataframe(pd.DataFrame(gaps), use_container_width=True, hide_index=True)
+    else:
+        st.info("No gaps recorded yet — every query so far matched a scheme.")
+
+    st.markdown("#### Recent queries")
+    logs = api_get("/logs", limit=25)
+    if logs:
+        df = pd.DataFrame(logs)[["timestamp", "query_text", "matched", "fingerprint"]]
+        st.dataframe(df, use_container_width=True, hide_index=True)
