@@ -9,15 +9,17 @@ Endpoints exist so the dashboard can render the full chain:
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .core import eligibility, llm, narrate, pathfinder, profile as profile_mod, rag, store, voice
+from .core import doc_doctor, eligibility, llm, narrate, pathfinder, profile as profile_mod, rag, store, voice
 from .core.schemas import Profile, QueryRequest, QueryResponse, TrustTrace
 
 app = FastAPI(title="Setu API", version="0.1.0")
@@ -206,6 +208,46 @@ def reason(request: QueryRequest):
         "audio_path": audio_path,
         "trace_fingerprint": trace.fingerprint(),
         "timings_ms": timings,
+    }
+
+
+@app.post("/api/documents/check")
+async def check_documents(files: list[UploadFile] = File(...)):
+    """
+    Upload two or more document photos; get back what would cause a rejection.
+
+    Filenames carry the type hint where possible (aadhaar.jpg, passbook.png) so
+    the report can name the documents the way the user would.
+    """
+    if len(files) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload at least two documents — the check is a comparison.",
+        )
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="setu_docs_"))
+    paths: list[tuple[Path, str | None]] = []
+    try:
+        for upload in files:
+            dest = tmpdir / (upload.filename or "document")
+            dest.write_bytes(await upload.read())
+            stem = dest.stem.lower()
+            hint = next(
+                (k for k in doc_doctor.DOC_LABELS if k.split("_")[0] in stem),
+                None,
+            )
+            paths.append((dest, hint))
+        return doc_doctor.review(paths)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@app.get("/api/documents/health")
+def documents_health():
+    return {
+        "vision_model": doc_doctor.VISION_MODEL,
+        "vision_available": doc_doctor.vision_available(),
+        "fallback": "docling OCR + granite",
     }
 
 
