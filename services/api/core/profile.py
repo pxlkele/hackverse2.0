@@ -72,19 +72,45 @@ CITY_TO_STATE = {
     "patna": "Bihar", "bhopal": "Madhya Pradesh", "indore": "Madhya Pradesh",
 }
 
+# Both scripts, and both spellings of the romanisation. Whisper writes spoken
+# Hindi in Devanagari, while the model tends to romanise the occupation field —
+# and it is inconsistent about it ("pani poori" vs "pani puri"), so match the
+# stem rather than the full phrase wherever that is unambiguous.
 FOOD_WORDS = (
-    "pani puri", "panipuri", "golgappa", "chaat", "samosa", "vada", "dosa",
+    "pani puri", "panipuri", "pani poori", "panipoori", "puri", "poori",
+    "golgappa", "gol gappa", "chaat", "chat wala", "samosa", "vada", "dosa",
     "idli", "tea", "chai", "juice", "fruit", "vegetable", "sabzi", "food",
     "snack", "momo", "roll", "bhel", "tiffin", "meal", "sweet", "ice cream",
+    "khana", "nashta", "hotel", "canteen", "dhaba", "kulfi", "lassi",
+    # Devanagari
+    "पानी पूरी", "पानीपूरी", "पानी पुरी", "गोलगप्पा", "गोल गप्पा", "चाट", "समोसा",
+    "वड़ा", "डोसा", "इडली", "चाय", "जूस", "फल", "सब्ज़ी", "सब्जी", "खाना",
+    "नाश्ता", "मोमो", "भेल", "मिठाई", "आइसक्रीम", "कुल्फी", "लस्सी", "ढाबा",
 )
 
 CATEGORY_WORDS = {
-    "street_vendor": ("thela", "cart", "hawker", "footpath", "roadside", "stall", "vendor", "rehri"),
-    "artisan": ("tailor", "carpenter", "potter", "weaver", "cobbler", "blacksmith",
-                "darzi", "artisan", "craft", "embroider"),
-    "farmer": ("farmer", "kheti", "farm", "kisan", "agricultur"),
-    "service": ("driver", "mechanic", "barber", "electrician", "plumber", "painter"),
-    "trader": ("shop", "dukaan", "store", "trader", "retail"),
+    "street_vendor": (
+        "thela", "thele", "cart", "hawker", "footpath", "roadside", "stall",
+        "vendor", "rehri", "redi", "khomcha", "pheri",
+        "ठेला", "ठेले", "रेहड़ी", "रेड़ी", "फुटपाथ", "सड़क किनारे", "खोमचा", "फेरी",
+    ),
+    "artisan": (
+        "tailor", "carpenter", "potter", "weaver", "cobbler", "blacksmith",
+        "darzi", "artisan", "craft", "embroider",
+        "दर्जी", "बढ़ई", "कुम्हार", "बुनकर", "मोची", "लोहार", "कारीगर",
+    ),
+    "farmer": (
+        "farmer", "kheti", "farm", "kisan", "agricultur",
+        "किसान", "खेती", "खेत",
+    ),
+    "service": (
+        "driver", "mechanic", "barber", "electrician", "plumber", "painter",
+        "ड्राइवर", "मैकेनिक", "नाई", "बिजली", "प्लंबर", "पेंटर",
+    ),
+    "trader": (
+        "shop", "dukaan", "store", "trader", "retail",
+        "दुकान", "दूकान", "व्यापारी",
+    ),
 }
 
 WANTS_LOAN = re.compile(
@@ -99,34 +125,68 @@ _UNITS = {
     "ek": 1, "do": 2, "teen": 3, "char": 4, "chaar": 4, "paanch": 5, "panch": 5,
     "chhe": 6, "che": 6, "saat": 7, "aath": 8, "ath": 8, "nau": 9, "das": 10,
     "gyarah": 11, "barah": 12, "pandrah": 15, "bees": 20, "pachees": 25, "tees": 30,
+    # Working-age numbers. The list stopped at 30, so most adults could not say
+    # their own age in words — and age decides PMSBY outright.
+    "paintees": 35, "paintis": 35, "chalees": 40, "chalis": 40,
+    "paintalees": 45, "pachas": 50, "pachaas": 50, "pachpan": 55,
+    "saath": 60, "painsath": 65, "sattar": 70,
+    # Devanagari. Whisper transcribes spoken Hindi in this script, so without
+    # these the whole regex layer is blind to the input we actually take.
+    "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पाँच": 5, "पांच": 5, "छह": 6, "छे": 6,
+    "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "ग्यारह": 11, "बारह": 12, "पंद्रह": 15,
+    "बीस": 20, "पच्चीस": 25, "तीस": 30, "पैंतीस": 35, "चालीस": 40,
+    "पैंतालीस": 45, "पचास": 50, "पचपन": 55, "साठ": 60, "पैंसठ": 65, "सत्तर": 70,
 }
-_SCALES = {"sau": 100, "hazaar": 1000, "hazar": 1000, "lakh": 100000, "lac": 100000}
+
+# Devanagari digits, so "३५ साल" reads the same as "35 saal".
+_DEV_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+_SCALES = {
+    "sau": 100, "hazaar": 1000, "hazar": 1000, "lakh": 100000, "lac": 100000,
+    # Devanagari, including the spellings Whisper actually emits: it writes
+    # "सो" for सौ and "रुपै" for रुपये often enough that matching only the
+    # correct forms loses real transcripts.
+    "सौ": 100, "सो": 100, "हज़ार": 1000, "हजार": 1000, "लाख": 100000,
+}
 
 _NUM_WORDS = "|".join(sorted(_UNITS, key=len, reverse=True))
 _SCALE_WORDS = "|".join(sorted(_SCALES, key=len, reverse=True))
 
 # "aath sau", "do hazaar", "dhai hazaar", "800", "1500 rupaye"
+_RUPEE_WORDS = r"rupaye|rupees|rupaya|rs|ka|रुपये|रुपए|रुपया|रुपै|रूपये|रुपये"
+
 _SPOKEN_AMOUNT = re.compile(
-    rf"\b(?:(\d+)|({_NUM_WORDS}))\s*({_SCALE_WORDS})\b|\b(\d{{3,7}})\s*(?:rupaye|rupees|rs|ka)\b",
+    rf"(?:(\d+)|({_NUM_WORDS}))\s*({_SCALE_WORDS})"
+    rf"|\b(\d{{3,7}})\s*(?:{_RUPEE_WORDS})",
     re.IGNORECASE,
 )
-_DAILY_CONTEXT = re.compile(r"\b(roz|roj|daily|per day|din\s*ka|har din)\b", re.IGNORECASE)
-_MONTHLY_CONTEXT = re.compile(r"\b(mahine|month|monthly|maheena)\b", re.IGNORECASE)
+_DAILY_CONTEXT = re.compile(
+    r"\b(roz|roj|daily|per day|din\s*ka|har din)\b|रोज़|रोज|हर दिन|दिन का|दिन में",
+    re.IGNORECASE,
+)
+_MONTHLY_CONTEXT = re.compile(
+    r"\b(mahine|month|monthly|maheena)\b|महीने|महीना|माह|मासिक",
+    re.IGNORECASE,
+)
 
 # Age vs. years-in-business both use "saal", so the surrounding words decide:
 #   "34 saal ka hoon"  -> age 34        (ka/ki hoon, umar, age)
 #   "saat saal se"     -> in business 7 (se = since)
 _AGE = re.compile(
-    rf"\b(?:umar|umra|age)\s*(?:hai|is)?\s*(\d{{1,3}})\b"
-    rf"|\b(?:(\d{{1,3}})|({_NUM_WORDS}))\s*(?:saal|varsh|years?)\s*(?:ka|ki|kaa|kii)\s*(?:hoon|hun|hu|h)\b"
+    rf"(?:umar|umra|age|उम्र|आयु)\s*(?:hai|is|है)?\s*(?:(\d{{1,3}})|({_NUM_WORDS}))\b"
+    rf"|(?:(\d{{1,3}})|({_NUM_WORDS}))\s*(?:saal|varsh|years?|साल|वर्ष|बरस)"
+    # No trailing \b: Devanagari vowel signs and candrabindu are combining marks,
+    # so a word boundary after "हूँ" does not match the way it does after "hoon".
+    # "हू" (no candrabindu) is what Whisper actually writes, not the tidy "हूँ".
+    rf"\s*(?:ka|ki|kaa|kii|का|की)?\s*(?:hoon|hun|hu|h|हूँ|हूं|हुँ|हू|हु|है)"
     rf"|\b(\d{{1,3}})\s*years?\s*old\b",
     re.IGNORECASE,
 )
 
 # "saat saal se", "7 saal se kaam", "2 years in business"
 _YEARS_IN_BUSINESS = re.compile(
-    rf"\b(?:(\d+(?:\.\d+)?)|({_NUM_WORDS}))\s*(?:saal|varsh|years?)\s*"
-    rf"(?:se|from|of\s+(?:business|experience)|in\s+(?:this\s+)?(?:business|work|line))\b",
+    rf"(?:(\d+(?:\.\d+)?)|({_NUM_WORDS}))\s*(?:saal|varsh|years?|साल|वर्ष|बरस)\s*"
+    rf"(?:\bse\b|\bfrom\b|से|of\s+(?:business|experience)"
+    rf"|in\s+(?:this\s+)?(?:business|work|line))",
     re.IGNORECASE,
 )
 
@@ -143,6 +203,7 @@ def _parse_amount(match: re.Match) -> float | None:
 
 def _regex_income(text: str) -> tuple[float | None, float | None]:
     """(daily, monthly) — whichever the sentence context indicates."""
+    text = text.translate(_DEV_DIGITS)
     for match in _SPOKEN_AMOUNT.finditer(text):
         amount = _parse_amount(match)
         if not amount:
@@ -157,7 +218,7 @@ def _regex_income(text: str) -> tuple[float | None, float | None]:
 
 def _regex_years(text: str) -> float | None:
     """Years in business. Requires 'se'/'from' so it can't swallow an age."""
-    match = _YEARS_IN_BUSINESS.search(text)
+    match = _YEARS_IN_BUSINESS.search(text.translate(_DEV_DIGITS))
     if not match:
         return None
     digit, word = match.group(1), match.group(2)
@@ -165,7 +226,7 @@ def _regex_years(text: str) -> float | None:
 
 
 def _regex_age(text: str) -> int | None:
-    match = _AGE.search(text)
+    match = _AGE.search(text.translate(_DEV_DIGITS))
     if not match:
         return None
     for group in match.groups():
