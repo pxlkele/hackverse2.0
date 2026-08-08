@@ -142,6 +142,81 @@ schemes:
             Note that simply having a current loan is fine — only accounts
             classified as NPA or written off are a problem.
 
+  # ── PMSBY: accident cover. Matters more than it looks for a cart vendor —
+  #    road-side work, long hours, no employer cover. Rounds Setu out from a
+  #    credit tool into credit + insurance.
+  #
+  #    NOTE FOR PALAK: the ingested PMSBY Rules PDF is the 2015 original and
+  #    states a Rs 12/year premium. The premium was revised upward in 2022
+  #    (widely reported as Rs 20). We cite the document we have, per the rule
+  #    that nothing is asserted without a source — but verify before the demo,
+  #    because a judge who knows this scheme may query the number.
+  - id: pmsby
+    name: PMSBY
+    full_name: Pradhan Mantri Suraksha Bima Yojana
+    category: insurance
+    priority: 3
+    benefit_summary: >-
+      Rs 2 lakh cover for accidental death or disability, for a premium of
+      Rs 12 per year auto-debited from your savings account. Renewable yearly.
+    benefit_amount_rupees: 200000
+    benefit_detail:
+      premium_per_year_rupees: 12
+      cover_accidental_death_rupees: 200000
+      renewal: annual, each 1st of June
+      payment: auto-debit from the linked savings bank account
+    source_docs:
+      - PMSBY Rules.pdf
+      - SOP PMSBY.pdf
+
+    rules:
+      - id: pmsby_min_age
+        description: Must be at least 18 years old
+        field: age
+        op: gte
+        value: 18
+        source_doc: PMSBY Rules.pdf
+        source_page: 2
+        source_quote: >-
+          The savings bank account holders of the participating banks aged
+          between 18 years (completed) and 70 years (age nearer birthday) who
+          give their consent to join / enable auto-debit will be enrolled into
+          the scheme.
+        remedy: null   # age is not remediable by any action
+
+      - id: pmsby_max_age
+        description: Must be 70 or younger
+        field: age
+        op: lte
+        value: 70
+        source_doc: PMSBY Rules.pdf
+        source_page: 2
+        source_quote: >-
+          ...aged between 18 years (completed) and 70 years (age nearer
+          birthday)...
+        remedy: null
+
+      - id: pmsby_savings_account
+        description: Must hold a savings bank account for auto-debit of the premium
+        field: documents
+        op: contains
+        value: bank_account
+        source_doc: PMSBY Rules.pdf
+        source_page: 2
+        source_quote: >-
+          Premium: Rs.12/- per annum per member. The premium will be deducted
+          from the account holder's savings bank account through 'auto debit'
+          facility in one installment.
+        remedy:
+          action: Open a zero-balance Jan Dhan savings account
+          cost_rupees: 0
+          time_days: 2
+          where: Any bank branch, post office, or Bank Mitra
+          detail: >-
+            A PMJDY account needs only Aadhaar and has no minimum balance. The
+            same account also unlocks PM SVANidhi disbursal, so this one step
+            clears two schemes.
+
   # ── FSSAI: the second rung for a food vendor. The Regulations define a petty
   #    food manufacturer as "a petty retailer, hawker, itinerant vendor or
   #    temporary stall holder" — the statute describes our user exactly.

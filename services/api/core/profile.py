@@ -112,9 +112,21 @@ _SPOKEN_AMOUNT = re.compile(
 _DAILY_CONTEXT = re.compile(r"\b(roz|roj|daily|per day|din\s*ka|har din)\b", re.IGNORECASE)
 _MONTHLY_CONTEXT = re.compile(r"\b(mahine|month|monthly|maheena)\b", re.IGNORECASE)
 
-# "saat saal se", "7 saal", "2 years"
-_YEARS = re.compile(
-    rf"\b(?:(\d+(?:\.\d+)?)|({_NUM_WORDS}))\s*(saal|years?|varsh)\b", re.IGNORECASE
+# Age vs. years-in-business both use "saal", so the surrounding words decide:
+#   "34 saal ka hoon"  -> age 34        (ka/ki hoon, umar, age)
+#   "saat saal se"     -> in business 7 (se = since)
+_AGE = re.compile(
+    rf"\b(?:umar|umra|age)\s*(?:hai|is)?\s*(\d{{1,3}})\b"
+    rf"|\b(?:(\d{{1,3}})|({_NUM_WORDS}))\s*(?:saal|varsh|years?)\s*(?:ka|ki|kaa|kii)\s*(?:hoon|hun|hu|h)\b"
+    rf"|\b(\d{{1,3}})\s*years?\s*old\b",
+    re.IGNORECASE,
+)
+
+# "saat saal se", "7 saal se kaam", "2 years in business"
+_YEARS_IN_BUSINESS = re.compile(
+    rf"\b(?:(\d+(?:\.\d+)?)|({_NUM_WORDS}))\s*(?:saal|varsh|years?)\s*"
+    rf"(?:se|from|of\s+(?:business|experience)|in\s+(?:this\s+)?(?:business|work|line))\b",
+    re.IGNORECASE,
 )
 
 
@@ -143,11 +155,25 @@ def _regex_income(text: str) -> tuple[float | None, float | None]:
 
 
 def _regex_years(text: str) -> float | None:
-    match = _YEARS.search(text)
+    """Years in business. Requires 'se'/'from' so it can't swallow an age."""
+    match = _YEARS_IN_BUSINESS.search(text)
     if not match:
         return None
     digit, word = match.group(1), match.group(2)
     return float(digit) if digit else float(_UNITS.get((word or "").lower(), 0)) or None
+
+
+def _regex_age(text: str) -> int | None:
+    match = _AGE.search(text)
+    if not match:
+        return None
+    for group in match.groups():
+        if not group:
+            continue
+        value = int(group) if group.isdigit() else _UNITS.get(group.lower(), 0)
+        if 10 <= value <= 110:  # anything outside this isn't an age
+            return value
+    return None
 
 FIELDS_FOR_ELIGIBILITY = (
     "age", "occupation_category", "daily_income", "monthly_income",
@@ -175,6 +201,12 @@ def _enrich(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]
         if years:
             data["years_in_business"] = years
             derived.append("years_in_business parsed from text")
+
+    if not data.get("age"):
+        age = _regex_age(text)
+        if age:
+            data["age"] = age
+            derived.append("age parsed from text")
 
     # City, if the model missed it but we can see it in the text.
     if not data.get("city"):

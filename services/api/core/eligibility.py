@@ -175,7 +175,7 @@ def evaluate_scheme(profile: Profile, scheme: dict[str, Any]) -> Decision:
         scheme_name=scheme["name"],
         status=status,
         rules=results,
-        missing_fields=[by_id[r.rule_id]["field"] for r in unknown],
+        missing_fields=list(dict.fromkeys(by_id[r.rule_id]["field"] for r in unknown)),
         benefit_summary=" ".join(str(scheme.get("benefit_summary", "")).split()),
         benefit_amount_rupees=scheme.get("benefit_amount_rupees"),
     )

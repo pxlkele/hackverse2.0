@@ -191,3 +191,45 @@ def test_food_vendor_matches_both_schemes():
     assert by_id["fssai_basic"].status is EligibilityStatus.ELIGIBLE
     assert by_id["pm_svanidhi"].status is EligibilityStatus.NOT_ELIGIBLE
     assert by_id["pm_svanidhi"].ladder
+
+
+# ── Age vs. years-in-business ────────────────────────────────────────────────
+
+def test_age_and_tenure_are_not_confused():
+    """
+    Both use "saal" in Hindi. "34 saal ka hoon" is an age; "saat saal se" is how
+    long they've traded. Getting these backwards silently breaks PMSBY.
+    """
+    from services.api.core.profile import _regex_age, _regex_years
+
+    text = "Main 34 saal ka hoon, saat saal se yeh kaam kar raha hoon."
+    assert _regex_age(text) == 34
+    assert _regex_years(text) == 7
+
+
+def test_tenure_alone_is_not_read_as_an_age():
+    from services.api.core.profile import _regex_age, _regex_years
+
+    text = "Saat saal se pani puri ka thela chalata hoon."
+    assert _regex_age(text) is None
+    assert _regex_years(text) == 7
+
+
+def test_missing_fields_are_deduplicated():
+    """Two age rules must not report 'age' twice to the user."""
+    profile = vendor(age=None)
+    decision = el.evaluate_scheme(profile, el.get_scheme("pmsby"))
+    assert decision.missing_fields == ["age"]
+
+
+def test_pmsby_age_bounds():
+    assert el.evaluate_scheme(vendor(age=34), el.get_scheme("pmsby")).status is EligibilityStatus.ELIGIBLE
+    assert el.evaluate_scheme(vendor(age=17), el.get_scheme("pmsby")).status is EligibilityStatus.NOT_ELIGIBLE
+    assert el.evaluate_scheme(vendor(age=75), el.get_scheme("pmsby")).status is EligibilityStatus.NOT_ELIGIBLE
+
+
+def test_age_failure_offers_no_false_hope():
+    """Nobody can act their way out of being 75. No ladder."""
+    profile = vendor(age=75)
+    decision = pf.build_ladder(profile, el.evaluate_scheme(profile, el.get_scheme("pmsby")))
+    assert decision.ladder is None
