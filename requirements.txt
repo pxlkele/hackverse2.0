@@ -1,4 +1,6 @@
-chromadb==0.5.5
+# 1.x, not 0.5.x: the committed index is written in the 1.x collection-config
+# format, and 0.5.5 cannot read it (KeyError '_type' on every query).
+chromadb==1.5.9
 sentence-transformers==3.0.1
 huggingface_hub==0.24.6
 docling==2.7.0
