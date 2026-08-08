@@ -214,6 +214,12 @@ def voice_health():
     return voice.cache_stats()
 
 
+# IVR simulator (Sanvi) — self-contained router, see channels/ivr_sim.py
+from channels.ivr_sim import router as ivr_router  # noqa: E402
+
+app.include_router(ivr_router)
+
+
 # Mounted last: a mount at "/" swallows every route declared after it.
 WEB = Path(__file__).resolve().parent.parent.parent / "apps" / "web"
 if WEB.exists():

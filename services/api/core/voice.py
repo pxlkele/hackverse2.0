@@ -76,7 +76,10 @@ def speak(text: str, lang: str = "hi", force: bool = False) -> Path:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     out = CACHE_DIR / f"{_key(text, lang)}.mp3"
 
-    if out.exists() and not force:
+    # A zero-byte file means a previous attempt died mid-write (edge-tts creates
+    # the file before it streams). Treating it as a hit would serve silence
+    # forever, which on stage looks exactly like the demo freezing.
+    if out.exists() and out.stat().st_size > 0 and not force:
         return out
 
     if VOICE_MODE == "offline":
@@ -95,7 +98,12 @@ def speak(text: str, lang: str = "hi", force: bool = False) -> Path:
     try:
         asyncio.run(_run())
     except Exception as exc:  # noqa: BLE001 - any failure must fall back
+        out.unlink(missing_ok=True)  # never leave a partial file to be cached
         raise VoiceError(f"TTS failed ({exc}). Pre-cache this line.") from exc
+
+    if out.stat().st_size == 0:
+        out.unlink(missing_ok=True)
+        raise VoiceError("TTS returned no audio (check the voice id and edge-tts version).")
 
     return out
 
