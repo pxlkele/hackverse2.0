@@ -11,6 +11,7 @@ invent a rupee figure or a deadline.
 
 from __future__ import annotations
 
+from . import eligibility
 from .llm import chat
 from .schemas import Decision, EligibilityStatus, Profile
 
@@ -72,14 +73,75 @@ def narrate_decision(decision: Decision, lang: str = "hi") -> str:
     return " ".join(text.split())
 
 
+# What someone asks for, mapped to the scheme category that answers it. Matched
+# against stated_need and the raw sentence, in both scripts, because a caller
+# says "paise chahiye", not "credit".
+NEED_TO_CATEGORY = {
+    "credit": (
+        "loan", "paisa", "paise", "karza", "karz", "udhaar", "udhar", "credit",
+        "money", "fund", "capital", "business badhana", "dukaan badhana",
+        "पैसा", "पैसे", "लोन", "कर्ज", "कर्ज़", "उधार", "पूँजी", "पूंजी",
+        "काम बढ़ान", "दुकान बढ़ान", "धंधा बढ़ान",
+    ),
+    "insurance": (
+        "insurance", "bima", "beema", "accident", "suraksha", "hospital", "illness",
+        "बीमा", "दुर्घटना", "सुरक्षा", "इलाज", "बीमारी",
+    ),
+    "licence": (
+        "licence", "license", "registration", "fssai", "certificate", "legal",
+        "लाइसेंस", "लायसेंस", "पंजीकरण", "रजिस्ट्रेशन", "प्रमाण",
+    ),
+}
+
+
+def _needed_categories(profile: Profile) -> set[str]:
+    """Which scheme categories the caller actually asked about."""
+    haystack = f"{profile.stated_need or ''} {profile.raw_text or ''}".lower()
+    return {
+        category
+        for category, words in NEED_TO_CATEGORY.items()
+        if any(word in haystack for word in words)
+    }
+
+
+def _category_of(decision: Decision) -> str | None:
+    scheme = eligibility.get_scheme(decision.scheme_id)
+    return (scheme or {}).get("category")
+
+
+def rank_decisions(profile: Profile, decisions: list[Decision]) -> list[Decision]:
+    """
+    Speaking order, deliberately in this priority:
+
+        1. what they actually asked for
+        2. then cheapest to reach
+        3. then the largest benefit
+
+    Ranking on cost alone - which is what this did - answers a man asking for a
+    loan by telling him about accident insurance, because insurance is cheaper
+    to qualify for. On a phone call he only really hears the first thing, so
+    the order is the answer.
+    """
+    wanted = _needed_categories(profile)
+    return sorted(
+        decisions,
+        key=lambda d: (
+            0 if _category_of(d) in wanted else 1,      # asked for it
+            d.total_cost_rupees or 0,                   # cheapest
+            -(d.benefit_amount_rupees or 0),            # biggest money
+            d.total_time_days or 0,                     # tie-break: soonest
+        ),
+    )
+
+
 def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -> str:
     """
-    The whole answer, spoken. Leads with what he qualifies for today, then the
-    nearest path — good news first, because the point is that he leaves with
-    something actionable.
+    The whole answer, spoken, in the order the caller cares about: what they
+    asked for first, then cheapest, then biggest.
     """
-    eligible = [d for d in decisions if d.status is EligibilityStatus.ELIGIBLE]
-    laddered = [d for d in decisions if d.ladder]
+    ranked = rank_decisions(profile, decisions)
+    eligible = [d for d in ranked if d.status is EligibilityStatus.ELIGIBLE]
+    laddered = [d for d in ranked if d.ladder]
 
     parts = []
     if eligible:
@@ -89,7 +151,7 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
             parts.append(f"You qualify today for {d.scheme_name}: {short}.")
 
     if laddered:
-        best = min(laddered, key=lambda d: (d.total_cost_rupees or 0, d.total_time_days or 0))
+        best = laddered[0]
         amount = (
             f"up to {best.benefit_amount_rupees:.0f} rupees"
             if best.benefit_amount_rupees else "this scheme"
@@ -100,6 +162,18 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
             f"{len(best.ladder)} steps away - {cost}, about {best.total_time_days} days."
         )
         parts.append(f"Your first step: {best.ladder[0].action}, at {best.ladder[0].where}.")
+
+        # The rest get one line each. A caller cannot hold four ladders in their
+        # head, but they should still hear that the other doors exist.
+        for other in laddered[1:3]:
+            other_amount = (
+                f"up to {other.benefit_amount_rupees:.0f} rupees"
+                if other.benefit_amount_rupees else "help"
+            )
+            parts.append(
+                f"You can also get {other_amount} from {other.scheme_name}, "
+                f"{len(other.ladder)} steps away."
+            )
 
     if not parts:
         parts.append("We could not find a matching scheme yet. Tell us a little more about your work.")
