@@ -137,7 +137,10 @@ ASR_BY_LANGUAGE = {
     "mr": "मी पानिपूरी चा थेला लाव तो, माजवै पस्तिस वर्शा है, रोज आच्छे रुपे कमाव तो",
     "gu": "वो पानी पूरीनी लारी चलावूचु, मारी उम्मर पान्त्रिस वर्ष चे, रोज आट्सो रुप्या कमावूचु.",
     "bn": "आनी पनी पुरी ख्याखा लाई आमार भायस पुत्रीष बच्छर प्रोटी दिन आख्शो ताका",
-    "ta": "என் வயது முப்பத்தையுந்து கினமும் 800 ரூபாய் சம்பாதிக்கிறேன்",
+    "ta": (
+        "நான் பானி பூரி தள்ளு வண்டி வைத்திருக்கிறேன் என் வயது முப்பத்தையுந்து "
+        "கினமும் 800 ரூபாய் சம்பாதிக்கிறேன்"
+    ),
     "te": "नेनु पानी पूरी बण्धी पेट्टुकुन्तान। ना वयसू 35 समत्सराल। रोजुकु 800 रूपायल।",
     "kn": "ನಾನು ಪಾನೆ ಪುರ್ ಗಾಡಿಯಿ ಇಟ್ತಿದೇನೆ. ನಾನ್ನ ವಾಸು 35 ವಾಷ್ ದಿನಕ್ 800 ರೂಪಾಯ",
     "en": "I run a pani puri cart. I am 35 years old. I earn 800 rupees daily.",
@@ -151,6 +154,88 @@ def test_age_and_income_survive_asr_in_every_offered_language(lang):
     daily, monthly = pm._regex_income(heard)
     assert daily == 800.0, f"{lang}: lost the income"
     assert monthly is None, f"{lang}: filed a daily wage as monthly"
+
+
+# ── False positives ─────────────────────────────────────────────────────────
+#
+# Everything above asks "did we catch the fact". These ask the harder question:
+# did we catch something that was never there. A missed income shows up as a
+# NEED_INFO the caller can correct; an invented one silently changes eligibility.
+
+def test_employment_is_not_read_as_daily():
+    """
+    "रोजगार" is employment. "रोज" is daily. \\b cannot close a Devanagari word,
+    so the daily-context pattern used to match inside रोजगार and file a *monthly*
+    wage as a daily one — a 26x overstatement, checked against PM SVANidhi's
+    income cap, which denies a vendor a scheme he qualifies for. MGNREGA is
+    रोजगार गारंटी, so this is vocabulary the product will absolutely hear.
+    """
+    daily, monthly = pm._regex_income("मुझे रोजगार चाहिए। महीने में बीस हज़ार कमाता हूँ।")
+    assert daily is None
+    assert monthly == 20000.0
+
+
+def test_a_phone_number_is_not_an_amount():
+    """The bare-digits branch is bounded at both ends for this reason."""
+    daily, _ = pm._regex_income("मेरा नंबर 9876543210 है, रोज़ आठ सौ कमाता हूँ")
+    assert daily == 800.0
+
+
+def test_english_income_without_the_word_rupees():
+    """"20000 a month" names no currency and was read as no income at all."""
+    daily, monthly = pm._regex_income("I earn 20000 a month")
+    assert (daily, monthly) == (None, 20000.0)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I earn 2000 everyday",          # the phrasing that exposed this
+        "I earn 2000 every day",
+        "2000 everyday",
+        "I make 2000 rupees everyday",
+        "I earn 2000 daily",
+        "I earn 2000 a day",
+        "I earn 2000 each day",
+        "roz 2000 kamata hoon",
+        "rozana 2000",
+        "रोज़ाना दो हज़ार",
+        "हर रोज़ 2000",
+        "रोज़ दो हज़ार रुपये कमाता हूँ",
+        "मैं रोज़ 2000 कमाता हूँ",
+    ],
+)
+def test_every_natural_phrasing_of_a_daily_wage(text):
+    """
+    "everyday" was missing from the daily-context list, so four of seven ways of
+    saying the same sentence returned no income at all — including "I earn 2000
+    rupees everyday", which names both the amount and the currency. A dropped
+    income is not visibly wrong, it just quietly becomes a NEED_INFO.
+    """
+    daily, monthly = pm._regex_income(text)
+    assert daily == 2000.0
+    assert monthly is None
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("I earn 52000 a month", 52000.0),
+        ("I earn 52000 per month", 52000.0),
+        ("I earn 52000 monthly", 52000.0),
+        ("महीने में बीस हज़ार", 20000.0),
+        ("हर महीने 20000", 20000.0),
+    ],
+)
+def test_monthly_phrasings(text, expected):
+    daily, monthly = pm._regex_income(text)
+    assert monthly == expected
+    assert daily is None
+
+
+def test_rent_is_not_income():
+    """An amount with no daily or monthly word beside it is never assumed."""
+    assert pm._regex_income("दुकान का किराया आठ सौ है") == (None, None)
 
 
 def test_a_number_word_is_not_matched_inside_a_longer_word():

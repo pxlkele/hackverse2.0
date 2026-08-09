@@ -88,6 +88,14 @@ FOOD_WORDS = (
     "पानी पूरी", "पानीपूरी", "पानी पुरी", "गोलगप्पा", "गोल गप्पा", "चाट", "समोसा",
     "वड़ा", "डोसा", "इडली", "चाय", "जूस", "फल", "सब्ज़ी", "सब्जी", "खाना",
     "नाश्ता", "मोमो", "भेल", "मिठाई", "आइसक्रीम", "कुल्फी", "लस्सी", "ढाबा",
+    # The spellings Whisper actually returns for the other seven languages. It
+    # renders Gujarati, Bengali and Telugu phonetically in Devanagari, so those
+    # sit here beside the Hindi rather than in their own scripts.
+    "पनी पुरी", "पानिपूरी", "पानी पूरीनी", "पानी पुरीर",          # bn / gu / mr
+    "பானி பூரி", "பானிபூரி", "சாட்", "தோசை", "இட்லி", "டீ",        # ta
+    "ಪಾನಿ ಪೂರಿ", "ಪಾನೆ ಪುರ್", "ಚಾಟ್", "ದೋಸೆ", "ಇಡ್ಲಿ",             # kn
+    "పానీ పూరీ", "చాట్", "దోస", "ఇడ్లీ",                            # te
+    "পানি পুরি", "চাট",                                              # bn, native script
 )
 
 CATEGORY_WORDS = {
@@ -95,6 +103,13 @@ CATEGORY_WORDS = {
         "thela", "thele", "cart", "hawker", "footpath", "roadside", "stall",
         "vendor", "rehri", "redi", "khomcha", "pheri",
         "ठेला", "ठेले", "रेहड़ी", "रेड़ी", "फुटपाथ", "सड़क किनारे", "खोमचा", "फेरी",
+        # Each language has its own word for the cart, and it is the single
+        # keyword that decides street_vendor — which PM SVANidhi is gated on.
+        "थेला", "लारी", "बण्धी", "बंडी",                     # mr / gu / te (Devanagari)
+        "தள்ளுவண்டி", "தள்ளு வண்டி", "வண்டி", "கடை",         # ta
+        "ಗಾಡಿ", "ಗಾಡಿಯಿ", "ತಳ್ಳುಗಾಡಿ",                        # kn
+        "బండి", "గాడి",                                        # te
+        "ঠেলা", "গাড়ি",                                       # bn
     ),
     "artisan": (
         "tailor", "carpenter", "potter", "weaver", "cobbler", "blacksmith",
@@ -282,21 +297,40 @@ _RUPEE_WORDS = (
 
 _SPOKEN_AMOUNT = re.compile(
     rf"(?:(\d+)|({_NUM_WORDS}))\s*({_SCALE_WORDS})"
-    rf"|\b(\d{{3,7}})\s*(?:{_RUPEE_WORDS})",
+    # The currency word is optional: "I earn 20000 a month" named no currency and
+    # so was read as no income at all. Safe to relax because _regex_income still
+    # requires a daily or monthly word nearby before it believes any of this, and
+    # the 3-digit floor keeps ages out. The closing \b is load-bearing — without
+    # it, seven digits of a phone number match as an amount.
+    rf"|\b(\d{{3,7}})\b\s*(?:{_RUPEE_WORDS})?",
     re.IGNORECASE,
 )
+# \b cannot close a Devanagari word — the same combining-mark problem the age
+# branch has. Without this, "रोज" matches inside "रोजगार" (employment), and
+# "रोजगार चाहिए, महीने में बीस हज़ार" files ₹20,000 as a DAILY wage. That is a
+# 26x overstatement of income, and income is what PM SVANidhi's cap is checked
+# against — so the bug denies a vendor a scheme he actually qualifies for.
+# रोजगार is not an edge case here: MGNREGA is रोजगार गारंटी.
+_DEV_END = r"(?![ऀ-ॿ])"
+
 _DAILY_CONTEXT = re.compile(
-    r"\b(roz|roj|daily|per day|din\s*ka|har din)\b|रोज़|रोज|हर दिन|दिन का|दिन में"
+    # "everyday" is how people actually say this, and it was missing: "I earn
+    # 2000 everyday" returned no income at all, as did "2000 rupees everyday".
+    # Four of seven natural phrasings of the same sentence were being dropped.
+    r"\b(roz|roj|rozana|daily|per day|a day|each day|every ?day|din\s*ka|har din|har roz)\b"
+    rf"|(?:रोज़|रोज|रोज़ाना|रोजाना|दररोज){_DEV_END}"
+    r"|हर दिन|हर रोज़|दिन का|दिन में"
     # Marathi रोज is the same word; Bengali protidin, Gujarati roj, Tamil
     # thinamum. Without the language's own word for "daily" an amount is filed
     # as neither daily nor monthly and the income is dropped entirely.
-    r"|प्रोटी दिन|प्रतिदिन|दररोज|தினமும்|ஒரு நாள்"
+    r"|प्रोटी दिन|प्रतिदिन|தினமும்|ஒரு நாள்"
     # Telugu rojuku, Kannada dinakke — both arrive attached to the amount.
     r"|रोजुकु|ದಿನಕ್ಕೆ|ದಿನಕ್|రోజుకు",
     re.IGNORECASE,
 )
 _MONTHLY_CONTEXT = re.compile(
-    r"\b(mahine|month|monthly|maheena)\b|महीने|महीना|माह|मासिक"
+    r"\b(mahine|month|monthly|maheena|per month|a month|every ?month)\b"
+    r"|महीने|महीना|माह|मासिक|महीने का|हर महीने"
     r"|महिन्याला|माशे|मासे|மாதம்|மாதத்திற்கு",
     re.IGNORECASE,
 )
@@ -419,7 +453,13 @@ FIELDS_FOR_ELIGIBILITY = (
 def _enrich(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]:
     """Deterministic post-processing. Cheaper and far more reliable than prompting."""
     derived: list[str] = []
-    low = f"{text} {data.get('occupation') or ''}".lower()
+    # _normalise, not the raw text: Whisper writes ठेला as "टेला", and the cart
+    # keyword below is spelled the correct way. Without this the whole keyword
+    # layer misses on voice input and occupation_category falls back to whatever
+    # the model happened to romanise — which is exactly the dependency the
+    # deterministic layer exists to remove. When it misses, PM SVANidhi and FSSAI
+    # both drop to NEED_INFO with no ladder, and PM SVANidhi is the anchor scheme.
+    low = f"{_normalise(text)} {data.get('occupation') or ''}".lower()
 
     # Numbers first — the model drops these unpredictably and they drive eligibility.
     if not data.get("daily_income") and not data.get("monthly_income"):
