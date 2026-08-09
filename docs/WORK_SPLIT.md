@@ -75,8 +75,13 @@ submission. Everything past here is upside.
 
 | | |
 |---|---|
-| **PALAK** | `core/trust.py` replayable traces + `eval/` with **20 personas** and a 2-slice fairness audit. Get a real precision number. |
+| **PALAK** | Replayable traces + `eval/` with **20 personas** and a 2-slice fairness audit. Get a real precision number. |
 | **SANVI** | PWA shell for real users (giant buttons, icons over text, every control speaks itself) + **voice IN**: mic → faster-whisper → the pipeline you already trust. |
+
+> *Shipped differently:* there is no `core/trust.py`, which an earlier version of
+> this row named. The traces landed as `TrustTrace` in `core/schemas.py` behind
+> `POST /api/reason`, and `eval/` ran **21** personas, not 20. Nothing is
+> missing — that file just never existed, so don't go looking for it.
 
 **Sanvi: pre-cache the demo audio the moment ASR works.** Single strongest
 insurance policy in the build.
@@ -106,7 +111,8 @@ Also in this block: **Sanvi** wires voice OUT (edge-tts) — 1 hour, do it first
 
 - Wire everything to one core; fix the seams
 - Seed `setu.db` with 5 personas at different stages so it looks lived-in
-- `standing.py` — catalog-change re-evaluation (Palak, ~2 hrs, cheap and impressive)
+- ~~`standing.py` — catalog-change re-evaluation~~ **CUT** (see the bottom of
+  this file; it never demoed as more than "trust us, it re-runs")
 - IVR simulator in the browser (Sanvi, ~2 hrs)
 - Timeouts + cached fallbacks on every external call
 - **Kill the wifi and run the whole demo.** If anything breaks, it isn't done.
@@ -150,9 +156,23 @@ apps/dashboard/app.py         operator console — YOURS NOW      needs Doc Doct
 core/llm.py                   Granite adapter                   done
 core/profile.py               text → Profile JSON               done
 core/voice.py                 Whisper in, edge-tts out          done
-apps/web/index.html           the PWA — the vendor's phone      hers
-channels/ivr_sim.py           browser IVR handset               hers
+
+the PWA — the vendor's own phone, served at /pwa/
+apps/web/pwa/index.html       giant buttons, controls speak     done
+apps/web/pwa/sw.js            offline shell                     done
+apps/web/pwa/manifest.webmanifest  install to home screen       done
+apps/web/pwa/icon-192.png     app icon                          done
+apps/web/pwa/icon-512.png     app icon                          done
+
+the IVR — feature-phone demo, served at /
+channels/ivr_sim.py           IVR state machine + FastAPI router  done
+apps/web/index.html           the handset UI (keypad, dial)      done
 ```
+
+Two files make the IVR, not one: the router and the handset that drives it.
+`apps/web/index.html` is the **IVR simulator**, not the PWA — an earlier version
+of this table had that backwards and left the five `apps/web/pwa/` files with no
+owner at all.
 
 **File ownership is the rule.** Palak touches `apps/dashboard/`, Sanvi touches
 `apps/web/` and `channels/`. Anything in `services/api/core/` either of you may
