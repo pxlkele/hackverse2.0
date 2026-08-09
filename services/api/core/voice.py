@@ -132,6 +132,21 @@ def precache(lines: list[tuple[str, str]]) -> dict[str, str]:
     return results
 
 
+def warm() -> None:
+    """
+    Load the Whisper weights before the first caller speaks.
+
+    Measured on this laptop: the model costs ~10s to load off disk, and
+    _whisper() is lru_cached, so without this the very first tap on stage pays
+    all of it before ASR even starts. Nothing to do with the network — the
+    weights are local; it is purely the first-use penalty.
+    """
+    try:
+        _whisper()
+    except Exception:  # noqa: BLE001 - a warm-up must never stop the server
+        pass
+
+
 def is_cached(text: str, lang: str = "hi") -> bool:
     return (CACHE_DIR / f"{_key(text, lang)}.mp3").exists()
 

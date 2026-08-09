@@ -175,6 +175,37 @@ _UNITS = {
 
 # Devanagari digits, so "३५ साल" reads the same as "35 saal".
 _DEV_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+# What Whisper writes -> what the speaker actually said.
+#
+# Adding Devanagari to the keyword lists fixed the first half of this problem.
+# The second half is that Whisper's Hindi is *phonetic*: it confuses the
+# retroflex/dental pairs (ट/त, ड/ढ), drops final vowel signs, and sometimes
+# fuses a number onto its scale word. Feeding the canonical demo sentence
+# through ASR and reading the output back:
+#
+#     spoken   मैं पानी पूरी का ठेला ... पैंतीस साल ... आठ सौ रुपये
+#     heard    मैं पानी पूरी का टेला ... पैंटीस साल ... आट्सो रुपय
+#
+# which cost us age AND income on the one sentence the demo is built around.
+# Repairing spelling here, at the single point every fallback already passes
+# through, beats adding variants to five separate regexes.
+#
+# Every entry below was measured, not guessed. Add to it from the vendor's real
+# recording — his accent will produce spellings this list has never seen.
+_ASR_SPELLINGS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Fused number+scale. _SPOKEN_AMOUNT needs the two tokens separable.
+    (re.compile(r"आट्सो|आठसो|आठसौ"), "आठ सौ"),
+    # Retroflex where a dental was spoken.
+    (re.compile(r"पैंटीस|पेंटीस"), "पैंतीस"),
+    (re.compile(r"टेला"), "ठेला"),
+    # Missing final vowel sign. The lookahead stops this from corrupting the
+    # correctly-spelled "रुपये"/"रुपया" into "रुपयेे".
+    (re.compile(r"रुपय(?![ेाो])"), "रुपये"),
+    (re.compile(r"बड़ाने"), "बढ़ाने"),
+)
+
+
 _SCALES = {
     "sau": 100, "hazaar": 1000, "hazar": 1000, "lakh": 100000, "lac": 100000,
     # Devanagari, including the spellings Whisper actually emits: it writes
@@ -226,6 +257,20 @@ _YEARS_IN_BUSINESS = re.compile(
 )
 
 
+def _normalise(text: str) -> str:
+    """
+    Fold Devanagari digits and ASR spelling into the forms the patterns expect.
+
+    Every regex fallback passes through here. It works on a copy, for matching
+    only — the Profile keeps the raw transcript, because what the caller
+    actually said is the auditable record.
+    """
+    text = text.translate(_DEV_DIGITS)
+    for pattern, correct in _ASR_SPELLINGS:
+        text = pattern.sub(correct, text)
+    return text
+
+
 def _parse_amount(match: re.Match) -> float | None:
     digit, word, scale, bare = match.groups()
     if bare:
@@ -238,7 +283,7 @@ def _parse_amount(match: re.Match) -> float | None:
 
 def _regex_income(text: str) -> tuple[float | None, float | None]:
     """(daily, monthly) — whichever the sentence context indicates."""
-    text = text.translate(_DEV_DIGITS)
+    text = _normalise(text)
     for match in _SPOKEN_AMOUNT.finditer(text):
         amount = _parse_amount(match)
         if not amount:
@@ -253,7 +298,7 @@ def _regex_income(text: str) -> tuple[float | None, float | None]:
 
 def _regex_years(text: str) -> float | None:
     """Years in business. Requires 'se'/'from' so it can't swallow an age."""
-    match = _YEARS_IN_BUSINESS.search(text.translate(_DEV_DIGITS))
+    match = _YEARS_IN_BUSINESS.search(_normalise(text))
     if not match:
         return None
     digit, word = match.group(1), match.group(2)
@@ -261,7 +306,7 @@ def _regex_years(text: str) -> float | None:
 
 
 def _regex_age(text: str) -> int | None:
-    match = _AGE.search(text.translate(_DEV_DIGITS))
+    match = _AGE.search(_normalise(text))
     if not match:
         return None
     for group in match.groups():

@@ -34,8 +34,17 @@ app.add_middleware(
 
 @app.on_event("startup")
 def _warm_models() -> None:
-    """Preload Granite so the first judge-facing query isn't the slow one."""
+    """
+    Preload Granite so the first judge-facing query isn't the slow one, and
+    Whisper so the first *spoken* one isn't either — measured at ~10s of weight
+    loading that the caller's first tap would otherwise pay on stage.
+
+    Deliberately blocking: this costs startup time we have plenty of and buys
+    silence-free latency we do not. Start the server before the demo, not
+    during it.
+    """
     llm.warm()
+    voice.warm()
 
 
 @app.get("/api/health")
