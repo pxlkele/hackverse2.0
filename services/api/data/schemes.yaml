@@ -12,6 +12,11 @@ version: "0.1.0"
 # dead end; a rule with one is a rung. When adding a scheme, write the remedy
 # even if it feels obvious — the pathfinder can only offer what is written here.
 #
+# `depends_on` lists rule ids whose remedies must be completed FIRST. You cannot
+# create a UPI ID without a bank account, and you cannot open a Jan Dhan account
+# without Aadhaar. Without this the ladder sorts by cost and time and hands
+# someone an order they physically cannot follow.
+#
 # Rule operators: eq, ne, gt, gte, lt, lte, in, not_in, contains, not_contains, is_true, is_false
 # A rule whose field is missing from the profile evaluates to None -> NEED_INFO.
 
@@ -104,6 +109,7 @@ schemes:
           the SV.
         remedy:
           action: Open a zero-balance Jan Dhan savings account
+          depends_on: [svanidhi_aadhaar]
           cost_rupees: 0
           time_days: 2
           where: Any bank branch or Bank Mitra / business correspondent
@@ -146,6 +152,7 @@ schemes:
           vi. Valid and Unique UPI ID linked to the SVs bank account.
         remedy:
           action: Create a UPI ID on any payments app linked to your bank account
+          depends_on: [svanidhi_bank_account]
           cost_rupees: 0
           time_days: 1
           where: Any UPI app — BHIM, PhonePe, Google Pay, Paytm

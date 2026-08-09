@@ -120,17 +120,97 @@ def build_ladder(profile: Profile, decision: Decision) -> Decision:
         decision.ladder = None
         return decision
 
-    # Cheapest first, then fastest — the user should be able to start today.
-    steps.sort(key=lambda s: (s.cost_rupees, s.time_days))
-    for i, step in enumerate(steps, 1):
+    # Order by dependency first, then cheapest and fastest within what is
+    # currently doable. Sorting purely by cost and time produced ladders nobody
+    # could follow: "create a UPI ID linked to your bank account" as step 1 for
+    # someone who has no bank account, and "enrol for Aadhaar" as step 4 when
+    # the account in step 2 requires it.
+    depends = {
+        s.unblocks_rule: set(
+            ((get_rule(decision.scheme_id, s.unblocks_rule) or {}).get("remedy") or {})
+            .get("depends_on", [])
+        )
+        for s in steps
+    }
+    present = {s.unblocks_rule for s in steps}
+    # A dependency already satisfied by the profile is not a blocker.
+    depends = {k: (v & present) for k, v in depends.items()}
+
+    # Among the steps someone could start today, do the one that unblocks the
+    # longest remaining chain first. Aadhaar takes 30 days and gates the bank
+    # account and the UPI ID; a Letter of Recommendation takes 7 and gates
+    # nothing. Listing the LoR first because it is quicker would leave the long
+    # pole untouched for a week.
+    chain = _chain_lengths(steps, depends)
+
+    ordered: list[LadderStep] = []
+    done: set[str] = set()
+    remaining = list(steps)
+
+    while remaining:
+        ready = [s for s in remaining if depends[s.unblocks_rule] <= done]
+        if not ready:
+            # A cycle in the data. Fall back rather than dropping steps, and let
+            # the ladder-verification test surface it.
+            ready = sorted(remaining, key=lambda s: (s.cost_rupees, s.time_days))[:1]
+        nxt = min(
+            ready,
+            key=lambda s: (-chain[s.unblocks_rule], s.cost_rupees, s.time_days),
+        )
+        ordered.append(nxt)
+        done.add(nxt.unblocks_rule)
+        remaining.remove(nxt)
+
+    for i, step in enumerate(ordered, 1):
         step.order = i
 
-    decision.ladder = steps
-    decision.total_cost_rupees = sum(s.cost_rupees for s in steps)
-    # Steps are largely parallelisable, so the honest estimate is the longest
-    # single step, not the sum.
-    decision.total_time_days = max(s.time_days for s in steps)
+    decision.ladder = ordered
+    decision.total_cost_rupees = sum(s.cost_rupees for s in ordered)
+    decision.total_time_days = _critical_path_days(ordered, depends)
     return decision
+
+
+def _chain_lengths(steps: list[LadderStep], depends: dict[str, set[str]]) -> dict[str, int]:
+    """Days from starting each step until everything downstream of it is done."""
+    by_rule = {s.unblocks_rule: s for s in steps}
+    dependents: dict[str, list[str]] = {r: [] for r in by_rule}
+    for rule, prerequisites in depends.items():
+        for prerequisite in prerequisites:
+            if prerequisite in dependents:
+                dependents[prerequisite].append(rule)
+
+    memo: dict[str, int] = {}
+
+    def longest(rule: str, seen: frozenset[str] = frozenset()) -> int:
+        if rule in memo:
+            return memo[rule]
+        if rule in seen:  # cycle guard
+            return by_rule[rule].time_days
+        downstream = [
+            longest(child, seen | {rule}) for child in dependents.get(rule, [])
+        ]
+        memo[rule] = by_rule[rule].time_days + max(downstream, default=0)
+        return memo[rule]
+
+    return {rule: longest(rule) for rule in by_rule}
+
+
+def _critical_path_days(steps: list[LadderStep], depends: dict[str, set[str]]) -> int:
+    """
+    How long the whole ladder really takes.
+
+    Independent steps run in parallel, so the answer is not the sum. Dependent
+    ones run in sequence, so it is not the maximum either — it is the longest
+    chain. Telling someone "30 days" when Aadhaar must finish before the bank
+    account can start understates it by two days, and the point of the number is
+    that they can plan around it.
+    """
+    finish: dict[str, int] = {}
+    for step in steps:
+        prerequisites = depends.get(step.unblocks_rule, set())
+        start = max((finish.get(p, 0) for p in prerequisites), default=0)
+        finish[step.unblocks_rule] = start + step.time_days
+    return max(finish.values(), default=0)
 
 
 def verify_ladder(profile: Profile, decision: Decision) -> bool:

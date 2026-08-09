@@ -147,12 +147,23 @@ def test_ladder_covers_multiple_missing_documents():
     assert pf.verify_ladder(profile, decision) is True
 
 
-def test_ladder_is_ordered_cheapest_and_fastest_first():
+def test_ladder_is_numbered_contiguously():
+    """
+    Ordering is by dependency and critical path, not by cost alone — see the
+    ordering tests below. What must always hold is that the steps are numbered
+    1..n with nothing dropped or repeated.
+    """
     profile = vendor(documents=[])
     decision = pf.build_ladder(profile, decide(profile))
-    keys = [(s.cost_rupees, s.time_days) for s in decision.ladder]
-    assert keys == sorted(keys)
-    assert [s.order for s in decision.ladder] == list(range(1, len(keys) + 1))
+    assert [s.order for s in decision.ladder] == list(range(1, len(decision.ladder) + 1))
+
+
+def test_cheapest_first_among_equally_unblocking_steps():
+    """Cost still breaks ties once dependencies and chain length are equal."""
+    profile = vendor(documents=["aadhaar", "bank_account"])
+    decision = pf.build_ladder(profile, decide(profile))
+    costs = [s.cost_rupees for s in decision.ladder]
+    assert costs == sorted(costs)
 
 
 def test_no_ladder_when_the_failure_cannot_be_remedied():
@@ -266,3 +277,63 @@ def test_every_citation_is_verbatim_from_its_pdf():
         capture_output=True, text=True, cwd=root,
     )
     assert result.returncode == 0, result.stdout
+
+
+# ── Ladder ordering: a path you can actually walk ────────────────────────────
+
+def test_ladder_never_asks_for_a_step_before_its_prerequisite():
+    """
+    The ladder once told someone with no documents to create a UPI ID linked to
+    a bank account they did not have, and to open a Jan Dhan account before
+    enrolling for the Aadhaar that account requires. Ordering by cost and time
+    alone produces routes nobody can follow.
+    """
+    profile = vendor(documents=[])
+    decision = pf.build_ladder(profile, decide(profile))
+
+    position = {s.unblocks_rule: s.order for s in decision.ladder}
+    for step in decision.ladder:
+        rule = el.get_rule(SVANIDHI, step.unblocks_rule)
+        for prerequisite in (rule.get("remedy") or {}).get("depends_on", []):
+            if prerequisite in position:
+                assert position[prerequisite] < step.order, (
+                    f"{step.unblocks_rule} is listed before its prerequisite {prerequisite}"
+                )
+
+
+def test_longest_chain_is_started_first():
+    """
+    Aadhaar takes 30 days and gates two later steps; the Letter of
+    Recommendation takes 7 and gates nothing. Listing the quicker one first
+    would leave the long pole untouched for a week.
+    """
+    profile = vendor(documents=[])
+    decision = pf.build_ladder(profile, decide(profile))
+    assert decision.ladder[0].unblocks_rule == "svanidhi_aadhaar"
+
+
+def test_total_time_is_the_critical_path_not_the_longest_step():
+    """
+    Aadhaar (30) -> bank account (2) -> UPI (1) run in sequence, so the honest
+    total is 33 days. Reporting the longest single step would understate it.
+    """
+    profile = vendor(documents=[])
+    decision = pf.build_ladder(profile, decide(profile))
+    assert decision.total_time_days == 33
+
+
+def test_independent_steps_are_not_summed():
+    """With Aadhaar and an account already held, the two remaining steps are
+    independent, so the total is the longer of them rather than their sum."""
+    profile = vendor(documents=["aadhaar", "bank_account"])
+    decision = pf.build_ladder(profile, decide(profile))
+    assert decision.total_time_days == 7  # not 7 + 1
+
+
+def test_satisfied_prerequisites_do_not_constrain_ordering():
+    """Someone who already holds Aadhaar should not have it re-imposed as a
+    blocker on the bank-account step."""
+    profile = vendor(documents=["aadhaar"])
+    decision = pf.build_ladder(profile, decide(profile))
+    assert pf.verify_ladder(profile, decision) is True
+    assert all(s.order > 0 for s in decision.ladder)
