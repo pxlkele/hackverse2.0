@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from . import eligibility
@@ -82,12 +83,36 @@ _SCRIPT_RE = {
 NATIVE_FLOOR = 0.85
 
 
+@lru_cache(maxsize=1)
+def _proper_nouns() -> tuple[str, ...]:
+    """
+    Latin names a correct translation is expected to keep.
+
+    Scheme names come from the catalogue so this cannot drift out of sync with
+    schemes.yaml. The rest are the brands and institutions that appear in the
+    ladder's `where` fields. Ordinary English in those fields - "Any bank
+    branch", "post office" - is deliberately absent: a translation is supposed
+    to translate that, and counting it as legitimate Latin would blind the
+    check to exactly the half-translated answers it exists to catch.
+    """
+    names = {
+        *KEEP_VERBATIM,
+        "Rs", "Aadhaar", "Jan Dhan", "UPI", "LoR", "CSC",
+        "Aadhaar Seva Kendra", "Bank Mitra", "BHIM", "PhonePe", "Google Pay",
+        "Paytm", "Block Development Officer", "Urban Local Body",
+    }
+    for scheme in eligibility.load_schemes().get("schemes", []):
+        if scheme.get("name"):
+            names.add(str(scheme["name"]))
+    # Longest first, so "FSSAI Basic Registration" goes before bare "FSSAI"
+    # and does not leave "Basic Registration" behind to be counted as English.
+    return tuple(sorted(names, key=len, reverse=True))
+
+
 def _native_ratio(text: str, lang: str) -> float:
     """
     Share of letters written in the language's own script.
 
-    Scheme brands are meant to stay in Latin - KEEP_VERBATIM is the list of
-    them - so they are removed before measuring rather than counted against it.
     English is not policed: it has no other script to be in.
     """
     pattern = _SCRIPT_RE.get(lang)
@@ -95,7 +120,7 @@ def _native_ratio(text: str, lang: str) -> float:
         return 1.0
 
     stripped = text
-    for term in (*KEEP_VERBATIM, "Rs", "Aadhaar", "Jan Dhan", "UPI", "LoR", "CSC"):
+    for term in _proper_nouns():
         stripped = stripped.replace(term, " ")
 
     letters = [c for c in stripped if c.isalpha()]
@@ -447,8 +472,13 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     # figure. If both attempts misstate money we speak the facts in English
     # rather than a fluent lie: a vendor who hears the right number in the wrong
     # language can still act on it, and the operator console shows the text.
+    # Three attempts, not two. Misstating money is intermittent - sampled on the
+    # persona that triggered the report, four generations in a row were correct -
+    # so a caller who happens to lose twice was being dropped into English for
+    # what a third try would almost certainly have fixed. The winner is cached,
+    # so the extra attempt is paid at most once per distinct answer.
     best_text, best_ratio, bad = "", -1.0, set()
-    for temperature in (0.2, 0.0):
+    for temperature in (0.2, 0.0, 0.0):
         text = " ".join(
             chat(
                 prompt=prompt, system=SYSTEM, temperature=temperature,

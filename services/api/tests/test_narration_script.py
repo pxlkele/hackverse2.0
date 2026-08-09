@@ -53,6 +53,42 @@ class TestNativeRatio:
     def test_digits_and_punctuation_do_not_skew_it(self):
         assert narrate._native_ratio("२,००,००० ₹ — आप पात्र हैं!", "hi") == 1.0
 
+    def test_institution_names_are_allowed_to_stay_latin(self):
+        """
+        A correct Bengali answer still says "Bank Mitra" and "Jan Dhan". These
+        dragged good answers down to 67-73% and had them regenerated on every
+        single request, because the first version of this check only knew about
+        the four scheme brands.
+        """
+        text = (
+            "যেকোনো ব্যাংক শাখা, ডাকঘর অথবা Bank Mitra তে জিরো-ব্যালান্স "
+            "Jan Dhan সেভিং অ্যাকাউন্ট খুলুন।"
+        )
+        assert narrate._native_ratio(text, "bn") == 1.0
+
+    def test_scheme_names_come_from_the_catalogue(self):
+        """So the list cannot drift when schemes.yaml changes."""
+        nouns = narrate._proper_nouns()
+        assert "FSSAI Basic Registration" in nouns
+        assert "PM SVANidhi" in nouns
+
+    def test_longest_name_is_stripped_first(self):
+        """
+        "FSSAI Basic Registration" must go before bare "FSSAI", or the words
+        "Basic Registration" survive and count as untranslated English.
+        """
+        text = "आप FSSAI Basic Registration के लिए पात्र हैं"
+        assert narrate._native_ratio(text, "hi") == 1.0
+
+    def test_ordinary_english_is_still_caught(self):
+        """
+        The `where` fields contain plain English too - "Any bank branch",
+        "post office". Those must NOT be excused, or the check goes blind to
+        the half-translated answers it exists to catch.
+        """
+        text = "আপনি যোগ্য: Open a zero-balance savings account at Any bank branch or post office."
+        assert narrate._native_ratio(text, "bn") < narrate.NATIVE_FLOOR
+
 
 class TestCacheIsNotTrusted:
     def test_a_stale_english_entry_is_rejected_and_regenerated(self, tmp_path, monkeypatch):
