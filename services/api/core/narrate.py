@@ -100,6 +100,18 @@ LANG_NAMES = {
     "te": "Telugu", "bn": "Bengali", "gu": "Gujarati", "en": "simple English",
 }
 
+# IVR menu appended after every spoken response so the caller knows their options.
+# Keyed by language code; falls back to English.
+_IVR_MENU: dict[str, str] = {
+    "hi": "Ek dabaayen dobara sunne ke liye. Do dabaayen avedan shuru karne ke liye. Shunya dabaayen kisi se baat karne ke liye.",
+    "mr": "Parat aikanyasaathi ek daba. Arj suruu karnyasaathi don daba. Khunaashee bolanyasaathi shunya daba.",
+    "kn": "Matte kelalu ondu odiri. Arzeji praarambhisalu eradu odiri. Yaavaadaru mathaadalu sonne odiri.",
+    "ta": "Meendum ketka onrai azhuthu. Vinnappam thodannga irandai azhuthu. Yaraavadhu pesave poiyai azhuthu.",
+    "te": "Meeru vinaalante okati napaandi. Darkhaastu prarambhinchadam kosam rendu napaandi. Evaritonaaina maatlaadadam kosam sunna napaandi.",
+    "bn": "Abaar shunate ek chaapun. Abedon shuru korte dui chaapun. Karo sathe kotha bolte shunya chaapun.",
+    "en": "Press one to hear this again. Press two to start your application. Press zero to speak with someone.",
+}
+
 
 def _facts(decision: Decision) -> str:
     lines = [f"Scheme: {decision.scheme_name}", f"Benefit: {decision.benefit_summary}"]
@@ -226,7 +238,7 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     # them holds the ₹20,00,000 Marathi line. A cache that can serve a figure the
     # live path would now reject is just a slower way to say the wrong thing.
     if hit and not _misstated_money(hit, parts):
-        return hit
+        return _with_ivr_menu(hit, lang)
 
     language = LANG_NAMES.get(lang, "Hindi")
     prompt = f"Say this in {language}:\n\n" + "\n".join(parts)
@@ -241,7 +253,7 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
         text = " ".join(chat(prompt=prompt, system=SYSTEM, temperature=temperature).split())
         if not _misstated_money(text, parts):
             _store(key, text)
-            return text
+            return _with_ivr_menu(text, lang)
 
     bad = _misstated_money(text, parts)
     print(
@@ -251,7 +263,13 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     )
     fallback = " ".join(parts)
     _store(key, fallback)
-    return fallback
+    return _with_ivr_menu(fallback, lang)
+
+
+def _with_ivr_menu(text: str, lang: str) -> str:
+    """Append the IVR keypad menu so the caller actually hears their options."""
+    menu = _IVR_MENU.get(lang, _IVR_MENU["en"])
+    return f"{text} {menu}"
 
 
 def reasoning_steps(profile: Profile, decisions: list[Decision]) -> list[dict]:
