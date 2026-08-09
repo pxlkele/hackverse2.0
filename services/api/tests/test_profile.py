@@ -246,3 +246,55 @@ def test_a_number_word_is_not_matched_inside_a_longer_word():
     properties at once.
     """
     assert pm._regex_age("यह मेरा तीसरा ठेला है") is None
+
+
+# ── Real speech from the vendor's own phone ──────────────────────────────────
+#
+# Everything above was captured by synthesising a sentence and transcribing it
+# back. These four are different: they are what faster-whisper returned from a
+# person actually speaking into the PWA over a phone mic, read out of the
+# server log. They are messier than the synthetic set, and they are the reason
+# Marathi answered "I did not catch your age and your earnings" to every single
+# thing that was said to it.
+
+REAL_PHONE_SPEECH = {
+    # "पाणी पुरीचं दुकान चालवतो" - I run a pani puri shop.
+    "mr_pani_puri": ("भी पाने पूरी से दुगान चालमतो अनी मास्ता व्यवस्ताई वानोड़े", "mr"),
+    # The ordinary Marathi spelling, which was simply absent from FOOD_WORDS -
+    # so a Marathi speaker saying it *correctly* also extracted nothing.
+    "mr_correct_spelling": ("मी पाणी पुरीचं दुकान चालवतो", "mr"),
+    "mr_vada_pav": ("मी वडापाव विकतो", "mr"),
+    "gu_pani_puri": ("पानी पूरी नी दुकान जला बूशु में मारा काम", "gu"),
+}
+
+
+@pytest.mark.parametrize("key", sorted(REAL_PHONE_SPEECH))
+def test_real_phone_speech_yields_something_to_reason_from(key):
+    """
+    Not asserting a particular category: "trader" and "street_vendor" are both
+    defensible readings of "I run a pani puri shop", and which one comes back
+    depends on the model. What must never happen is nothing at all, because an
+    empty profile is what makes the channel re-prompt instead of answering.
+    """
+    text, lang = REAL_PHONE_SPEECH[key]
+    profile = pm.extract(text, language=lang, use_cache=False)
+    assert profile.sells_food is True
+    assert profile.occupation_category is not None
+
+
+def test_keyword_tables_are_in_the_cache_fingerprint():
+    """
+    Adding a spelling to FOOD_WORDS must invalidate cached profiles, or the
+    caller who reported the bug keeps getting the answer their stale cache
+    entry holds. The number tables were covered from the start; the keyword
+    tables were not, which made the fix invisible to exactly the person it was
+    written for.
+    """
+    before = pm._rules_fingerprint()
+    original = pm.FOOD_WORDS
+    try:
+        pm.FOOD_WORDS = original + ("a-spelling-that-did-not-exist",)
+        assert pm._rules_fingerprint() != before
+    finally:
+        pm.FOOD_WORDS = original
+    assert pm._rules_fingerprint() == before

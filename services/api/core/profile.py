@@ -92,6 +92,13 @@ FOOD_WORDS = (
     # renders Gujarati, Bengali and Telugu phonetically in Devanagari, so those
     # sit here beside the Hindi rather than in their own scripts.
     "पनी पुरी", "पानिपूरी", "पानी पूरीनी", "पानी पुरीर",          # bn / gu / mr
+    # Marathi. "पाणी पुरी" is the ordinary Marathi spelling and was simply
+    # missing, so a Marathi speaker saying it correctly extracted nothing at
+    # all; "पाने पूरी" is what Whisper returned from a real recording of
+    # "पाणी पुरीचं दुकान चालवतो". वडापाव and मिसळ are the two other street
+    # foods a Maharashtrian vendor is most likely to name.
+    "पाणी पुरी", "पाणीपुरी", "पाने पूरी", "पाने पुरी",
+    "वडा पाव", "वडापाव", "मिसळ", "भेळ",
     "பானி பூரி", "பானிபூரி", "சாட்", "தோசை", "இட்லி", "டீ",        # ta
     "ಪಾನಿ ಪೂರಿ", "ಪಾನೆ ಪುರ್", "ಚಾಟ್", "ದೋಸೆ", "ಇಡ್ಲಿ",             # kn
     "పానీ పూరీ", "చాట్", "దోస", "ఇడ్లీ",                            # te
@@ -571,7 +578,14 @@ def _rules_fingerprint() -> str:
     transcript the repaired parser reads as 35.
     """
     tables = repr((sorted(_UNITS.items()), sorted(_SCALES.items()),
-                   [p.pattern for p, _ in _ASR_SPELLINGS], _RUPEE_WORDS))
+                   [p.pattern for p, _ in _ASR_SPELLINGS], _RUPEE_WORDS,
+                   # The keyword tables belong here for the same reason as the
+                   # number tables. Adding the Marathi spellings of "pani puri"
+                   # would otherwise have changed nothing for the caller who
+                   # reported it: their transcript was already cached with
+                   # occupation_category=None, and the re-prompt would have
+                   # kept firing on a profile the repaired parser now reads.
+                   FOOD_WORDS, sorted(CATEGORY_WORDS.items())))
     return hashlib.sha1(tables.encode()).hexdigest()[:8]
 
 
