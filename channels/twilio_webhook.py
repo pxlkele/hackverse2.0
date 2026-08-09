@@ -63,27 +63,50 @@ def _twiml(turn: Turn) -> str:
         - "digit"  → <Gather numDigits="1">
         - "speech" → <Record maxLength="15" playBeep="true">
         - "end"    → <Hangup>
+      - Special case: state=="chatting" wraps <Play> inside <Gather> (digits
+        interrupt) with <Record> as fallback (speech captured if no digit).
+        Lets the caller press 0/1 mid-answer, or just speak instead.
     """
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<Response>"]
 
-    # ── say or play ──────────────────────────────────────────────────────────
-    # audio_url from the sim is relative (/api/ivr/audio/abc123). We need the
-    # full public URL for Twilio to fetch it. If PUBLIC_URL is not set we fall
-    # back to <Say>.
-    if turn.audio_url and PUBLIC_URL:
-        lines.append(f'  <Play>{PUBLIC_URL}{turn.audio_url}</Play>')
-        # The IVR sim splits answer and menu into two audio files so "press 1
-        # to replay" can loop the answer alone. Chain them here so the caller
-        # actually hears "press 1 for X, 2 for Y, 0 to talk to someone".
-        menu_url = (turn.detail or {}).get("menu_audio_url") if hasattr(turn, "detail") else None
-        if menu_url:
-            lines.append(f'  <Play>{PUBLIC_URL}{menu_url}</Play>')
-    else:
-        # Polly.Aditi is the only Indian Hindi voice on Twilio's free tier.
-        safe = turn.say.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        lines.append(f'  <Say voice="Polly.Aditi" language="hi-IN">{safe}</Say>')
+    # Audio-url helper: relative /api/ivr/audio/… → full public URL. If no
+    # PUBLIC_URL configured or no cached audio, we fall back to <Say>.
+    def _play_lines(indent: str) -> list[str]:
+        out: list[str] = []
+        if turn.audio_url and PUBLIC_URL:
+            out.append(f'{indent}<Play>{PUBLIC_URL}{turn.audio_url}</Play>')
+            menu_url = (turn.detail or {}).get("menu_audio_url") if hasattr(turn, "detail") else None
+            if menu_url:
+                out.append(f'{indent}<Play>{PUBLIC_URL}{menu_url}</Play>')
+        else:
+            safe = turn.say.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            out.append(f'{indent}<Say voice="Polly.Aditi" language="hi-IN">{safe}</Say>')
+        return out
 
-    # ── gather / record / hangup ─────────────────────────────────────────────
+    # ── chat mode: audio inside <Gather>, then <Record> fallback ────────────
+    if turn.state == "chatting":
+        # actionOnEmptyResult="false" — if the caller doesn't press within
+        # `timeout` after the audio ends, Twilio moves on to <Record> below
+        # instead of POSTing to /twilio/gather with empty Digits. That's the
+        # whole trick: keypress interrupts audio, silence starts recording.
+        lines.append(
+            f'  <Gather input="dtmf" numDigits="1" timeout="2" '
+            f'actionOnEmptyResult="false" '
+            f'action="{PUBLIC_URL}/twilio/gather" method="POST">'
+        )
+        lines.extend(_play_lines("    "))
+        lines.append("  </Gather>")
+        # No digit pressed during or shortly after audio — start recording.
+        lines.append(
+            f'  <Record maxLength="15" playBeep="true" '
+            f'action="{PUBLIC_URL}/twilio/speech" method="POST"/>'
+        )
+        lines.append("</Response>")
+        return "\n".join(lines)
+
+    # ── all other states: play audio, then the single expected next verb ────
+    lines.extend(_play_lines("  "))
+
     if turn.expect == "digit":
         # timeout=12 gives the caller room to hear the full 8-language menu
         # (~20s) and still pick without being redirected as silence.
