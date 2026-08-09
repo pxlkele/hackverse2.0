@@ -36,8 +36,22 @@ class LLMError(RuntimeError):
     pass
 
 
-def chat(prompt: str, system: str | None = None, temperature: float = 0.0) -> str:
-    """Plain text completion."""
+def chat(
+    prompt: str,
+    system: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int | None = None,
+) -> str:
+    """
+    Plain text completion.
+
+    `max_tokens` caps generation (Ollama's num_predict). This machine has no
+    GPU and Granite runs at roughly 10 tokens per second, so an answer's length
+    *is* its latency — and an uncapped call can run away entirely: pre-caching
+    the Gujarati narrations died on a single request that never came back
+    inside the 120s timeout. Callers that know how long an answer should be
+    should say so. Left as None, behaviour is unchanged.
+    """
     if BACKEND != "ollama":
         raise LLMError(f"backend '{BACKEND}' not wired up yet")
 
@@ -45,6 +59,10 @@ def chat(prompt: str, system: str | None = None, temperature: float = 0.0) -> st
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
+
+    options: dict[str, Any] = {"temperature": temperature}
+    if max_tokens is not None:
+        options["num_predict"] = max_tokens
 
     with httpx.Client(timeout=TIMEOUT) as client:
         response = client.post(
@@ -54,7 +72,7 @@ def chat(prompt: str, system: str | None = None, temperature: float = 0.0) -> st
                 "messages": messages,
                 "stream": False,
                 "keep_alive": KEEP_ALIVE,
-                "options": {"temperature": temperature},
+                "options": options,
             },
         )
         response.raise_for_status()

@@ -95,6 +95,16 @@ Rules:
 - End with the single next action they should take.
 - Warm and direct. No apologies, no "unfortunately"."""
 
+# Granite runs at about 10 tokens/second on this CPU, so length is latency. The
+# longest narration this catalogue has ever produced is 242 tokens; 320 leaves
+# room for a wordier language without letting a run-on answer hang the caller.
+# Pre-caching Gujarati died on exactly that: one request never returned inside
+# the 120s HTTP timeout and took the whole run down with it.
+NARRATION_MAX_TOKENS = 320
+
+# UI strings are a phrase each - a rung's action, a scheme name, a benefit line.
+UI_MAX_TOKENS = 160
+
 LANG_NAMES = {
     "hi": "Hindi", "mr": "Marathi", "kn": "Kannada", "ta": "Tamil",
     "te": "Telugu", "bn": "Bengali", "gu": "Gujarati", "en": "simple English",
@@ -251,7 +261,10 @@ def translate_ui(text: str, lang: str, allow_llm: bool = True) -> str:
     language = LANG_NAMES.get(lang, "Hindi")
     try:
         out = " ".join(
-            chat(prompt=f"Into {language}:\n\n{text}", system=UI_SYSTEM, temperature=0.0).split()
+            chat(
+                prompt=f"Into {language}:\n\n{text}", system=UI_SYSTEM, temperature=0.0,
+                max_tokens=UI_MAX_TOKENS,
+            ).split()
         )
     except Exception:  # noqa: BLE001 - English on the card beats no card
         return text
@@ -391,7 +404,12 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     # language can still act on it, and the operator console shows the text.
     text = ""
     for temperature in (0.2, 0.0):
-        text = " ".join(chat(prompt=prompt, system=SYSTEM, temperature=temperature).split())
+        text = " ".join(
+            chat(
+                prompt=prompt, system=SYSTEM, temperature=temperature,
+                max_tokens=NARRATION_MAX_TOKENS,
+            ).split()
+        )
         if not _misstated_money(text, parts):
             _store(key, text)
             return _with_ivr_menu(text, lang)
