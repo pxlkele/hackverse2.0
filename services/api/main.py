@@ -16,10 +16,16 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .core import doc_doctor, eligibility, llm, narrate, pathfinder, profile as profile_mod, rag, store, voice
+from .core import (
+    doc_doctor, eligibility, ledger, llm, narrate, pathfinder,
+    profile as profile_mod, rag, store, voice,
+)
+from pydantic import BaseModel
+
 from .core.schemas import Profile, QueryRequest, QueryResponse, TrustTrace
 
 app = FastAPI(title="Setu API", version="0.1.0")
@@ -259,6 +265,51 @@ def documents_health():
         "vision_available": doc_doctor.vision_available(),
         "fallback": "docling OCR + granite",
     }
+
+
+# ── Voice Ledger ────────────────────────────────────────────────────────────
+
+class LedgerEntry(BaseModel):
+    text: str
+    user_id: str = "demo"
+    on: str | None = None   # ISO date; defaults to today
+
+
+@app.post("/api/ledger/entry")
+def ledger_entry(request: LedgerEntry):
+    """One evening's spoken takings."""
+    from datetime import date as _date
+
+    on = _date.fromisoformat(request.on) if request.on else None
+    entry = ledger.record(request.user_id, request.text, on=on)
+    return {
+        "date": entry.on.isoformat(),
+        "earned": entry.earned,
+        "spent": entry.spent,
+        "heard": entry.raw_text,
+    }
+
+
+@app.get("/api/ledger/statement")
+def ledger_statement(user_id: str = "demo", days: int = 30, as_text: bool = False):
+    """
+    The cash-flow statement.
+
+    as_text returns the plain-text version a lender would be handed, in which
+    the provenance block sits above the totals on purpose.
+    """
+    statement = ledger.build_statement(user_id, days=days)
+    if as_text:
+        return PlainTextResponse(ledger.render_text(statement))
+    return ledger.statement_dict(statement)
+
+
+@app.post("/api/ledger/seed")
+def ledger_seed(user_id: str = "demo", days: int = 30):
+    """Thirty days of plausible takings, so the statement can be shown without
+    waiting a month. Clearly a demo affordance, not a product feature."""
+    written = ledger.seed_demo(user_id, days=days)
+    return {"days_written": written, "user_id": user_id}
 
 
 @app.get("/api/voice/health")
