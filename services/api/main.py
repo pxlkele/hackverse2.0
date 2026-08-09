@@ -334,13 +334,22 @@ def voice_health():
     return voice.cache_stats()
 
 
-# IVR simulator (Sanvi) — self-contained router, see channels/ivr_sim.py
+# IVR simulator — browser keypad transport
 from channels.ivr_sim import router as ivr_router  # noqa: E402
-
 app.include_router(ivr_router)
+
+# Twilio webhook — real phone calls through the same state machine
+from channels.twilio_webhook import router as twilio_router  # noqa: E402
+app.include_router(twilio_router)
 
 
 # Mounted last: a mount at "/" swallows every route declared after it.
+# Console (React build) is the primary UI — served at /.
+# The static pipeline page is kept at /demo/ as a fallback that works offline.
+CONSOLE = Path(__file__).resolve().parent.parent.parent / "apps" / "console" / "dist"
 WEB = Path(__file__).resolve().parent.parent.parent / "apps" / "web"
-if WEB.exists():
+
+if CONSOLE.exists():
+    app.mount("/", StaticFiles(directory=str(CONSOLE), html=True), name="console")
+elif WEB.exists():
     app.mount("/", StaticFiles(directory=str(WEB), html=True), name="web")
