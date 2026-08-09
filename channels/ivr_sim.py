@@ -110,6 +110,19 @@ PROMPTS = {
         "te": "ఒక నిమిషం ఆగండి. నేను ప్రభుత్వ నియమాలు చూస్తున్నాను.",
         "kn": "ಒಂದು ನಿಮಿಷ ಕಾಯಿರಿ. ನಾನು ಸರ್ಕಾರಿ ನಿಯಮಗಳನ್ನು ನೋಡುತ್ತಿದ್ದೇನೆ.",
     },
+    # Used when the words came through but no fact did. Naming what is missing
+    # rather than saying "I did not understand", because the caller can act on
+    # the first and not the second.
+    "need_more": {
+        "hi": "मैंने आपकी बात सुनी, पर आपकी उम्र और कमाई समझ नहीं आई। कृपया कहिए: मेरी उम्र इतनी है, मैं रोज़ इतने रुपये कमाता हूँ।",
+        "en": "I heard you, but I did not catch your age and your earnings. Please say: I am this many years old, and I earn this much a day.",
+        "mr": "मी ऐकलं, पण तुमचं वय आणि कमाई समजली नाही. कृपया सांगा: माझं वय इतकं आहे, मी रोज इतके रुपये कमावतो.",
+        "gu": "મેં સાંભળ્યું, પણ તમારી ઉંમર અને કમાણી સમજાઈ નહીં. કૃપા કરીને કહો: મારી ઉંમર આટલી છે, હું રોજ આટલા રૂપિયા કમાઉં છું.",
+        "bn": "আমি শুনেছি, কিন্তু আপনার বয়স আর আয় বুঝতে পারিনি। দয়া করে বলুন: আমার বয়স এত, আমি প্রতিদিন এত টাকা আয় করি।",
+        "ta": "நான் கேட்டேன், ஆனால் உங்கள் வயதும் வருமானமும் புரியவில்லை. தயவுசெய்து சொல்லுங்கள்: என் வயது இத்தனை, நான் தினமும் இத்தனை ரூபாய் சம்பாதிக்கிறேன்.",
+        "te": "నేను విన్నాను, కానీ మీ వయస్సు మరియు సంపాదన అర్థం కాలేదు. దయచేసి చెప్పండి: నా వయస్సు ఇంత, నేను రోజుకు ఇంత రూపాయలు సంపాదిస్తాను.",
+        "kn": "ನಾನು ಕೇಳಿದೆ, ಆದರೆ ನಿಮ್ಮ ವಯಸ್ಸು ಮತ್ತು ಸಂಪಾದನೆ ಅರ್ಥವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಹೇಳಿ: ನನ್ನ ವಯಸ್ಸು ಇಷ್ಟು, ನಾನು ದಿನಕ್ಕೆ ಇಷ್ಟು ರೂಪಾಯಿ ಸಂಪಾದಿಸುತ್ತೇನೆ.",
+    },
     "after_answer": {
         "hi": (
             "फिर से सुनने के लिए एक दबाइए। "
@@ -414,6 +427,22 @@ def on_digit(call_id: str, digit: str) -> Turn:
     return _turn(session, "not_understood", "digit", options=MENU_AFTER_ANSWER)
 
 
+def _has_usable_facts(profile) -> bool:
+    """
+    Whether extraction found anything the rule engine can actually reason from.
+
+    Deliberately generous: one real fact is enough to answer on, because a
+    caller who gave only their trade still deserves what that alone qualifies
+    them for. What this rejects is the empty profile - every field None - which
+    is what a failed transcription produces and which the rule engine happily
+    answers anyway.
+    """
+    return any(
+        getattr(profile, field, None) not in (None, [], "")
+        for field in ("age", "occupation_category", "daily_income", "monthly_income")
+    )
+
+
 def on_speech(call_id: str, text: str) -> Turn:
     """Caller finished speaking. This is where the real pipeline runs."""
     session = _session(call_id)
@@ -426,6 +455,25 @@ def on_speech(call_id: str, text: str) -> Turn:
     session.transcript.append({"who": "caller", "text": text})
 
     user_profile = profile_mod.extract(text, language=session.language)
+
+    # Nothing usable came out of the words. This is not hypothetical: Bengali
+    # speech transcribes as romanised Latin, so age, income and category all
+    # come back empty - and the rule engine, given an empty profile, still
+    # returns PMSBY, PMJJBY and PM SVANidhi with real rupee figures attached.
+    # A caller who said none of that would be told a confident number derived
+    # from nothing they said. Ask again instead: a demo that admits it did not
+    # understand is worth more than one that invents, and the whole product
+    # rests on the numbers being traceable to something real.
+    if not _has_usable_facts(user_profile):
+        print(
+            f"ivr/speech call={call_id} lang={session.language} "
+            f"no facts extracted from {text[:60]!r}; re-prompting",
+            flush=True,
+        )
+        turn = _turn(session, "need_more", "speech")
+        turn.detail = {"transcript": text, "profile": user_profile.model_dump(mode="json")}
+        return turn
+
     decisions = pathfinder.build_all(user_profile, eligibility.evaluate_all(user_profile))
     spoken = narrate.narrate_all(user_profile, decisions, session.language)
 

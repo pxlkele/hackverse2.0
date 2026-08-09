@@ -90,6 +90,45 @@ class TestNativeRatio:
         assert narrate._native_ratio(text, "bn") < narrate.NATIVE_FLOOR
 
 
+class TestEnglishIsPolicedByVocabulary:
+    """
+    English is the fallback every other language leans on, and it was the one
+    language nothing checked. Romanised Hindi wears the same alphabet, so the
+    script test scores it a perfect 1.0.
+    """
+
+    def test_the_romanised_hindi_that_was_served_as_english_is_caught(self):
+        """Verbatim from the screenshot, with EN selected."""
+        text = (
+            "Aap ke liye PM SVANidhi mein takraar mil sakta hai, jisme aap tak "
+            "15000 rupaye tak mil sakte hain. Aap abhi bas 4 kadam door ho. "
+            "Pehla kaam: apna Aadhaar card kisi enrolment centre mein register karwa lo."
+        )
+        assert narrate._native_ratio(text, "en") == 1.0, "the script test is blind to this"
+        assert narrate._wrong_language(text, "en"), "the vocabulary test must catch it"
+
+    def test_real_english_passes(self):
+        text = (
+            "You qualify today for PMSBY: 200000 rupees cover for accidental "
+            "death or disability. Your first step: open a zero-balance Jan Dhan "
+            "savings account at any bank branch, post office, or Bank Mitra."
+        )
+        assert not narrate._wrong_language(text, "en")
+
+    def test_one_stray_loanword_does_not_condemn_an_answer(self):
+        """Three distinct markers are required, not one."""
+        assert not narrate._wrong_language("Please bring your Aadhaar card.", "en")
+
+    def test_english_never_falls_back_to_its_own_bad_output(self):
+        """
+        _native_ratio scores romanised Hindi 1.0 for "en", so the best-effort
+        path would have handed back the very text the guard rejected.
+        """
+        text = "Aap ke liye yeh scheme hai, aapko 15000 rupaye milega, kisi bhi bank mein."
+        assert narrate._wrong_language(text, "en")
+        assert narrate._native_ratio(text, "en") == 1.0
+
+
 class TestCacheIsNotTrusted:
     def test_a_stale_english_entry_is_rejected_and_regenerated(self, tmp_path, monkeypatch):
         """

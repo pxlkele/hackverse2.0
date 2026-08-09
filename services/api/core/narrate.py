@@ -109,11 +109,47 @@ def _proper_nouns() -> tuple[str, ...]:
     return tuple(sorted(names, key=len, reverse=True))
 
 
+# Romanised Hindi wears the same alphabet as English, so the script check is
+# blind to it - _native_ratio returns 1.0 for "en" because English has no other
+# script to be in. That blind spot let "Aap ke liye PM SVANidhi mein takraar mil
+# sakta hai" be cached and served as the English answer for ever, which is worse
+# than any other language failing: English is the fallback everything else
+# leans on. Only unambiguous markers are listed - "ke", "ka", "se", "me", "bas"
+# and "hai" are left out because they collide with English words and names.
+_ROMANISED_INDIC = re.compile(
+    r"\b(aap|aapko|aapke|aapki|aapka|hain|mein|liye|sakta|sakte|sakti|rupaye|"
+    r"rupay|kadam|karwa|karwao|karwa\w*|abhi|jisme|apna|apni|apne|kisi|bhi|"
+    r"khulvao|lagenge|bechne|pehli|pehla|milega|hoga|nahi|yahan|wahan|"
+    r"dabaayen|chaapun|daba|door)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_romanised_indic(text: str) -> bool:
+    """Three distinct markers, so one stray loanword cannot condemn an answer."""
+    found = {m.group(0).lower() for m in _ROMANISED_INDIC.finditer(text)}
+    return len(found) >= 3
+
+
+def _wrong_language(text: str, lang: str) -> bool:
+    """
+    Whether an answer is not in the language it was asked for.
+
+    Two different tests because two different failures: every other language
+    can be checked by the script it is written in, English can only be checked
+    by what the words are.
+    """
+    if lang == "en":
+        return _looks_romanised_indic(text)
+    return _native_ratio(text, lang) < NATIVE_FLOOR
+
+
 def _native_ratio(text: str, lang: str) -> float:
     """
     Share of letters written in the language's own script.
 
-    English is not policed: it has no other script to be in.
+    English is not policed here - see _wrong_language, which checks it by
+    vocabulary instead.
     """
     pattern = _SCRIPT_RE.get(lang)
     if pattern is None:
@@ -455,28 +491,34 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     if not parts:
         parts.append("We could not find a matching scheme yet. Tell us a little more about your work.")
 
+    # English needs no model at all. `parts` are assembled in English already,
+    # and asking granite to "say this in simple English" reliably comes back as
+    # romanised Hindi - three attempts in a row were rejected on the live path,
+    # at roughly 25 seconds each, which is how the safety-net language became by
+    # far the slowest one to answer. Returning the facts directly is instant,
+    # deterministic, and cannot be in the wrong language.
+    if lang == "en":
+        return _with_ivr_menu(" ".join(parts), lang)
+
     key = _cache_key(parts, lang)
     hit = _cached(key)
     # Checked on the way out of the cache as well as on the way in. These files
     # are committed, and several were written before this guard existed — one of
     # them holds the ₹20,00,000 Marathi line. A cache that can serve a figure the
     # live path would now reject is just a slower way to say the wrong thing.
-    if hit and not _misstated_money(hit, parts) and _native_ratio(hit, lang) >= NATIVE_FLOOR:
+    if hit and not _misstated_money(hit, parts) and not _wrong_language(hit, lang):
         return _with_ivr_menu(hit, lang)
 
     language = LANG_NAMES.get(lang, "Hindi")
     prompt = f"Say this in {language}:\n\n" + "\n".join(parts)
 
-    # Two attempts, then English. The retry drops to temperature 0 because the
-    # failure we are recovering from is the model being creative with a rupee
-    # figure. If both attempts misstate money we speak the facts in English
-    # rather than a fluent lie: a vendor who hears the right number in the wrong
-    # language can still act on it, and the operator console shows the text.
-    # Three attempts, not two. Misstating money is intermittent - sampled on the
-    # persona that triggered the report, four generations in a row were correct -
-    # so a caller who happens to lose twice was being dropped into English for
-    # what a third try would almost certainly have fixed. The winner is cached,
-    # so the extra attempt is paid at most once per distinct answer.
+    # Three attempts, then the facts. The retries drop to temperature 0 because
+    # the failures being recovered from - a creative rupee figure, an answer in
+    # the wrong language - are both the model improvising. Misstating money is
+    # intermittent: sampled on the persona that triggered the report, four
+    # generations in a row were correct, so a caller who lost twice was being
+    # dropped into English for what a third try very likely fixes. The winner is
+    # cached, so the extra attempt is paid at most once per distinct answer.
     best_text, best_ratio, bad = "", -1.0, set()
     for temperature in (0.2, 0.0, 0.0):
         text = " ".join(
@@ -488,12 +530,18 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
         bad = _misstated_money(text, parts)
         if bad:
             continue
-        ratio = _native_ratio(text, lang)
-        if ratio >= NATIVE_FLOOR:
+        if not _wrong_language(text, lang):
             _store(key, text)
             return _with_ivr_menu(text, lang)
-        if ratio > best_ratio:
-            best_text, best_ratio = text, ratio
+        # "Best effort" is only meaningful where the script can be measured. An
+        # English request answered in romanised Hindi scores a perfect 1.0 by
+        # that measure, so keeping it as the best candidate would hand back the
+        # very text this guard exists to reject. English falls through to the
+        # facts below, which are already English.
+        if lang != "en":
+            ratio = _native_ratio(text, lang)
+            if ratio > best_ratio:
+                best_text, best_ratio = text, ratio
 
     # Nothing below here is cached. An earlier version stored the English
     # fallback, which is how a language that misfired once went on serving
