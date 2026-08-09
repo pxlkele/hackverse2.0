@@ -189,13 +189,22 @@ def main() -> int:
 
     @check("Speech to text (Whisper)")
     def _():
-        cached = sorted(voice.CACHE_DIR.glob("*.mp3"))
+        """
+        Transcribe the SHORTEST cached clip, not an arbitrary one.
+
+        A vendor speaks for about eight seconds. An earlier version of this
+        check grabbed a 130-word narration instead and tripped the ASR time
+        budget, reporting a failure the demo would never hit — a check whose
+        test data is unlike the real input tells you nothing useful.
+        """
+        cached = sorted(voice.CACHE_DIR.glob("*.mp3"), key=lambda p: p.stat().st_size)
         if not cached:
             raise RuntimeError("no cached audio to transcribe")
-        text = voice.transcribe(cached[0], language="hi")
+        clip = cached[0]
+        text = voice.transcribe(clip, language="hi")
         if not text.strip():
             raise RuntimeError("empty transcription")
-        return f"{len(text.split())} words back"
+        return f"{clip.stat().st_size // 1024} KB clip -> {len(text.split())} words"
 
     @check("Case store writes")
     def _():
