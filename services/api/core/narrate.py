@@ -59,6 +59,51 @@ def _amounts_in(text: str) -> set[int]:
     }
 
 
+# The script each language must actually be written in. A cached answer can be
+# word-perfect on the numbers and still be unusable: several entries written in
+# earlier sessions are Bengali or Devanagari sentence frames wrapped around
+# verbatim English benefit text, drifting into romanised Hindi half way through
+# ("Aap bas do step door hain"). _misstated_money never fires on those, because
+# every figure in them is correct. A vendor who reads Bengali does not read any
+# of it.
+_SCRIPT_RE = {
+    "hi": re.compile(r"[ऀ-ॿ]"),
+    "mr": re.compile(r"[ऀ-ॿ]"),
+    "bn": re.compile(r"[ঀ-৿]"),
+    "gu": re.compile(r"[઀-૿]"),
+    "ta": re.compile(r"[஀-௿]"),
+    "te": re.compile(r"[ఀ-౿]"),
+    "kn": re.compile(r"[ಀ-೿]"),
+}
+
+# Freshly generated answers measure 100% by this ratio; the stale entries that
+# prompted the check measure 5-15%, and the half-translated ones 50-62%. 0.85
+# sits in open space between "written in the language" and "sprinkled with it".
+NATIVE_FLOOR = 0.85
+
+
+def _native_ratio(text: str, lang: str) -> float:
+    """
+    Share of letters written in the language's own script.
+
+    Scheme brands are meant to stay in Latin - KEEP_VERBATIM is the list of
+    them - so they are removed before measuring rather than counted against it.
+    English is not policed: it has no other script to be in.
+    """
+    pattern = _SCRIPT_RE.get(lang)
+    if pattern is None:
+        return 1.0
+
+    stripped = text
+    for term in (*KEEP_VERBATIM, "Rs", "Aadhaar", "Jan Dhan", "UPI", "LoR", "CSC"):
+        stripped = stripped.replace(term, " ")
+
+    letters = [c for c in stripped if c.isalpha()]
+    if not letters:
+        return 1.0
+    return sum(1 for c in letters if pattern.match(c)) / len(letters)
+
+
 def _misstated_money(spoken: str, parts: list[str]) -> set[int]:
     """
     Amounts the narration states that the facts never contained.
@@ -391,7 +436,7 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     # are committed, and several were written before this guard existed — one of
     # them holds the ₹20,00,000 Marathi line. A cache that can serve a figure the
     # live path would now reject is just a slower way to say the wrong thing.
-    if hit and not _misstated_money(hit, parts):
+    if hit and not _misstated_money(hit, parts) and _native_ratio(hit, lang) >= NATIVE_FLOOR:
         return _with_ivr_menu(hit, lang)
 
     language = LANG_NAMES.get(lang, "Hindi")
@@ -402,7 +447,7 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
     # figure. If both attempts misstate money we speak the facts in English
     # rather than a fluent lie: a vendor who hears the right number in the wrong
     # language can still act on it, and the operator console shows the text.
-    text = ""
+    best_text, best_ratio, bad = "", -1.0, set()
     for temperature in (0.2, 0.0):
         text = " ".join(
             chat(
@@ -410,25 +455,54 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
                 max_tokens=NARRATION_MAX_TOKENS,
             ).split()
         )
-        if not _misstated_money(text, parts):
+        bad = _misstated_money(text, parts)
+        if bad:
+            continue
+        ratio = _native_ratio(text, lang)
+        if ratio >= NATIVE_FLOOR:
             _store(key, text)
             return _with_ivr_menu(text, lang)
+        if ratio > best_ratio:
+            best_text, best_ratio = text, ratio
 
-    bad = _misstated_money(text, parts)
+    # Nothing below here is cached. An earlier version stored the English
+    # fallback, which is how a language that misfired once went on serving
+    # English from disk for ever after - the reported symptom of "I spoke
+    # Bengali and it answered in English". A refusal is not an answer, and
+    # writing it to the cache makes a transient failure permanent.
+    if best_text:
+        print(
+            f"narrate: {lang} narration only {best_ratio:.0%} in its own script; "
+            f"speaking it anyway, not caching it",
+            flush=True,
+        )
+        return _with_ivr_menu(best_text, lang)
+
     print(
         f"narrate: refusing {lang} narration, invented amounts {sorted(bad)}; "
         f"falling back to English facts",
         flush=True,
     )
-    fallback = " ".join(parts)
-    _store(key, fallback)
-    return _with_ivr_menu(fallback, lang)
+    return _with_ivr_menu(" ".join(parts), lang)
 
 
 def _with_ivr_menu(text: str, lang: str) -> str:
-    """Append the IVR keypad menu so the caller actually hears their options."""
-    menu = _IVR_MENU.get(lang, _IVR_MENU["en"])
-    return f"{text} {menu}"
+    """
+    The answer, on its own.
+
+    This used to append _IVR_MENU, which is romanised Latin in all seven
+    non-English languages ("Abaar shunate ek chaapun"). Two things were wrong
+    with that. It was read out by TTS and printed on the phone as Latin in the
+    middle of a Bengali answer — the "it's all jumbled" report. And the channel
+    appends its own menu already, from ivr_sim's `after_answer` prompts, which
+    are written in each language's own script and reviewed alongside the rest
+    of the prompts; so every answer carried the menu twice, once wrongly.
+
+    Kept as a function, and still called, so the answer text has one place to
+    grow if a channel ever needs something appended again. _IVR_MENU is kept as
+    the romanised reference the phone-tree work started from.
+    """
+    return text
 
 
 def reasoning_steps(profile: Profile, decisions: list[Decision]) -> list[dict]:
