@@ -171,6 +171,19 @@ _UNITS = {
     "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "ग्यारह": 11, "बारह": 12, "पंद्रह": 15,
     "बीस": 20, "पच्चीस": 25, "तीस": 30, "पैंतीस": 35, "चालीस": 40,
     "पैंतालीस": 45, "पचास": 50, "पचपन": 55, "साठ": 60, "पैंसठ": 65, "सत्तर": 70,
+    # Marathi. Same script as Hindi, different words for the same numbers, so
+    # the Hindi entries above do not cover it.
+    "पंचवीस": 25, "पस्तीस": 35, "चाळीस": 40, "पंचेचाळीस": 45, "पन्नास": 50,
+    "पंचावन्न": 55, "सत्तरी": 70,
+    # Gujarati and Bengali, in the Devanagari that Whisper actually emits for
+    # them. There is no "correct" spelling to prefer here — the phonetic
+    # rendering *is* the form the parser will ever see.
+    "पान्त्रीस": 35, "त्रीस": 30, "चालीश": 40, "पचाश": 50,   # gu
+    "पुत्रीष": 35, "तिरिश": 30, "चल्लिश": 40, "पोन्चाश": 50,  # bn
+    # Tamil, in Tamil script. Working ages only — Whisper writes larger amounts
+    # as digits, which need no table at all.
+    "இருபது": 20, "முப்பது": 30, "முப்பத்தைந்து": 35, "நாற்பது": 40,
+    "நாற்பத்தைந்து": 45, "ஐம்பது": 50, "அறுபது": 60, "எழுபது": 70,
 }
 
 # Devanagari digits, so "३५ साल" reads the same as "35 saal".
@@ -203,6 +216,45 @@ _ASR_SPELLINGS: tuple[tuple[re.Pattern[str], str], ...] = (
     # correctly-spelled "रुपये"/"रुपया" into "रुपयेे".
     (re.compile(r"रुपय(?![ेाो])"), "रुपये"),
     (re.compile(r"बड़ाने"), "बढ़ाने"),
+
+    # ── Marathi ──
+    # Whisper writes Marathi in Devanagari, as it does Hindi, but the words
+    # differ: 35 is पस्तीस not पैंतीस, and 800 is आठशे not आठ सौ.
+    (re.compile(r"पस्तिस|पास्तिस"), "पस्तीस"),
+    (re.compile(r"आच्छे|आठ्शे|आठशे"), "आठ सौ"),
+    (re.compile(r"वर्शा|वर्षा"), "वर्ष"),
+
+    # ── Gujarati and Bengali ──
+    # Whisper has no Gujarati or Bengali script output for these voices: it
+    # transcribes both *phonetically into Devanagari*. Measured, the facts are
+    # entirely recoverable — "मारी उम्मर पान्त्रिस वर्ष चे" is plain Gujarati,
+    # just in the wrong script. Repair to the phonetic spelling the tables hold.
+    (re.compile(r"उम्मर"), "उम्र"),
+    (re.compile(r"पान्त्रिस"), "पान्त्रीस"),
+    (re.compile(r"रुप्या"), "रुपये"),
+    (re.compile(r"आख्शो|आट्शो"), "आठ सौ"),
+    (re.compile(r"पुत्रिष"), "पुत्रीष"),
+
+    # ── Tamil ──
+    # Tamil ASR is the best of the non-Hindi set (91%) and it writes numerals as
+    # digits, which survive any script. Only the words around them need help.
+    (re.compile(r"முப்பத்தையுந்து|முப்பத்தையந்து"), "முப்பத்தைந்து"),
+    (re.compile(r"கினமும்"), "தினமும்"),
+    # Spelled-out Tamil hundreds, folded to digits so the amount regex sees a
+    # number rather than a word it would need its own scale table for.
+    (re.compile(r"எண்ணூறு"), "800"),
+    (re.compile(r"அறுநூறு"), "600"),
+    (re.compile(r"ஐந்நூறு"), "500"),
+
+    # ── Telugu and Kannada ──
+    # These two only work on Whisper `medium` (see voice.ASR_MODEL_FOR). Medium
+    # writes their numerals as digits, which is why they are recoverable at all:
+    #   te  "ना वयसू 35 समत्सराल। रोजुकु 800 रूपायल।"   (Devanagari again)
+    #   kn  "ನಾನ್ನ ವಾಸು 35 ವಾಷ್ ದಿನಕ್ 800 ರೂಪಾಯ"        (Kannada script)
+    # so only the words around the digits need repairing.
+    (re.compile(r"ವಾಸು|ವಯಸು"), "ವಯಸ್ಸು"),
+    (re.compile(r"ದಿನಕ್(?!ಕ)"), "ದಿನಕ್ಕೆ"),
+    (re.compile(r"ರೂಪಾಯ(?![ಿಿ])"), "ರೂಪಾಯಿ"),
 )
 
 
@@ -218,7 +270,15 @@ _NUM_WORDS = "|".join(sorted(_UNITS, key=len, reverse=True))
 _SCALE_WORDS = "|".join(sorted(_SCALES, key=len, reverse=True))
 
 # "aath sau", "do hazaar", "dhai hazaar", "800", "1500 rupaye"
-_RUPEE_WORDS = r"rupaye|rupees|rupaya|rs|ka|रुपये|रुपए|रुपया|रुपै|रूपये|रुपये"
+# Bengali says taka, Tamil rupaay, Telugu/Kannada their own — a digit with no
+# currency word beside it is not read as money at all, so this list gates the
+# bare-number branch below.
+_RUPEE_WORDS = (
+    r"rupaye|rupees|rupaya|rs|ka|रुपये|रुपए|रुपया|रुपै|रूपये"
+    r"|रुपे|रुप्या|ताका|टाका|ரூபாய்|ரூபா|రూపాయలు|ರೂಪಾಯಿ"
+    # Telugu as Whisper renders it in Devanagari, plus the bare Kannada stem.
+    r"|रूपायल|रूपाय|ರೂಪಾಯ"
+)
 
 _SPOKEN_AMOUNT = re.compile(
     rf"(?:(\d+)|({_NUM_WORDS}))\s*({_SCALE_WORDS})"
@@ -226,31 +286,64 @@ _SPOKEN_AMOUNT = re.compile(
     re.IGNORECASE,
 )
 _DAILY_CONTEXT = re.compile(
-    r"\b(roz|roj|daily|per day|din\s*ka|har din)\b|रोज़|रोज|हर दिन|दिन का|दिन में",
+    r"\b(roz|roj|daily|per day|din\s*ka|har din)\b|रोज़|रोज|हर दिन|दिन का|दिन में"
+    # Marathi रोज is the same word; Bengali protidin, Gujarati roj, Tamil
+    # thinamum. Without the language's own word for "daily" an amount is filed
+    # as neither daily nor monthly and the income is dropped entirely.
+    r"|प्रोटी दिन|प्रतिदिन|दररोज|தினமும்|ஒரு நாள்"
+    # Telugu rojuku, Kannada dinakke — both arrive attached to the amount.
+    r"|रोजुकु|ದಿನಕ್ಕೆ|ದಿನಕ್|రోజుకు",
     re.IGNORECASE,
 )
 _MONTHLY_CONTEXT = re.compile(
-    r"\b(mahine|month|monthly|maheena)\b|महीने|महीना|माह|मासिक",
+    r"\b(mahine|month|monthly|maheena)\b|महीने|महीना|माह|मासिक"
+    r"|महिन्याला|माशे|मासे|மாதம்|மாதத்திற்கு",
     re.IGNORECASE,
 )
+
+# The word for "age": Hindi umar, Marathi वय, Bengali boyos, Tamil vayadu.
+# A sentence with this in front of a number needs no copula behind it, which is
+# what makes it the only branch some languages match at all.
+_AGE_MARKERS = (
+    r"umar|umra|age|उम्र|आयु|वय|वयस|भायस|बयस|வயது|ವಯಸ್ಸು|వయస్సు"
+    # Telugu vayasu as Whisper writes it in Devanagari. Ordered after "वयस" is
+    # harmless — the alternation matches the prefix and the number follows.
+    r"|वयसू"
+)
+
+# The word for "year". बच्छर is Bengali বছর as Whisper renders it.
+_YEAR_WORDS = r"saal|varsh|years?|साल|वर्ष|बरस|बच्छर|बछर|வருடம்|ஆண்டு|வயசு"
+
+# "I am": Hindi हूँ, Marathi आहे, Gujarati छे. Without the language's own copula
+# the number-then-year branch cannot tell an age from a span of time.
+_COPULA = r"hoon|hun|hu|h|हूँ|हूं|हुँ|हू|हु|है|आहे|आहेत|चे|छे|ছে"
 
 # Age vs. years-in-business both use "saal", so the surrounding words decide:
 #   "34 saal ka hoon"  -> age 34        (ka/ki hoon, umar, age)
 #   "saat saal se"     -> in business 7 (se = since)
+# Why not \b to close the first branch: Indic vowel signs are combining marks,
+# which Python's \w excludes. "முப்பத்தைந்து" ends in one, so between it and the
+# following space there is no word-to-non-word transition for \b to match, and
+# the branch silently never fired for Tamil. This is the same trap the second
+# branch already carries a note about for Devanagari "हूँ". Listing the real
+# terminators is also stricter than \b: it still refuses to match "तीस" inside
+# "तीसरा", because र is not one of them.
+_WORD_END = r"(?=[\s।॥,.!?;:]|$)"
+
 _AGE = re.compile(
-    rf"(?:umar|umra|age|उम्र|आयु)\s*(?:hai|is|है)?\s*(?:(\d{{1,3}})|({_NUM_WORDS}))\b"
-    rf"|(?:(\d{{1,3}})|({_NUM_WORDS}))\s*(?:saal|varsh|years?|साल|वर्ष|बरस)"
+    rf"(?:{_AGE_MARKERS})\s*(?:hai|is|है)?\s*(?:(\d{{1,3}})|({_NUM_WORDS})){_WORD_END}"
+    rf"|(?:(\d{{1,3}})|({_NUM_WORDS}))\s*(?:{_YEAR_WORDS})"
     # No trailing \b: Devanagari vowel signs and candrabindu are combining marks,
     # so a word boundary after "हूँ" does not match the way it does after "hoon".
     # "हू" (no candrabindu) is what Whisper actually writes, not the tidy "हूँ".
-    rf"\s*(?:ka|ki|kaa|kii|का|की)?\s*(?:hoon|hun|hu|h|हूँ|हूं|हुँ|हू|हु|है)"
+    rf"\s*(?:ka|ki|kaa|kii|का|की)?\s*(?:{_COPULA})"
     rf"|\b(\d{{1,3}})\s*years?\s*old\b",
     re.IGNORECASE,
 )
 
 # "saat saal se", "7 saal se kaam", "2 years in business"
 _YEARS_IN_BUSINESS = re.compile(
-    rf"(?:(\d+(?:\.\d+)?)|({_NUM_WORDS}))\s*(?:saal|varsh|years?|साल|वर्ष|बरस)\s*"
+    rf"(?:(\d+(?:\.\d+)?)|({_NUM_WORDS}))\s*(?:{_YEAR_WORDS})\s*"
     rf"(?:\bse\b|\bfrom\b|से|of\s+(?:business|experience)"
     rf"|in\s+(?:this\s+)?(?:business|work|line))",
     re.IGNORECASE,

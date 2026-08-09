@@ -117,3 +117,47 @@ def test_occupation_category_and_food_come_from_the_heard_text():
     """These two drive PM SVANidhi and FSSAI, and are keyword-inferred."""
     assert "street_vendor" in str(pm.CATEGORY_WORDS.keys())
     assert any(word in DEMO_HEARD for word in pm.FOOD_WORDS)
+
+
+# ── All eight languages ──────────────────────────────────────────────────────
+#
+# The same vendor — 35 years old, ₹800 a day — described in each of the eight
+# languages the product offers. Every string below is real faster-whisper output
+# on the model voice.ASR_MODEL_FOR selects for that language, captured by
+# synthesising the sentence and transcribing it back.
+#
+# Read these and the reason multilingual support is hard becomes obvious:
+# Whisper answers Gujarati, Bengali and Telugu in *Devanagari*, phonetically. A
+# character-similarity score calls that a 7% failure, and it is nothing of the
+# kind — the facts are all there. Judge a language by whether age and income
+# survive, which is what this test does.
+
+ASR_BY_LANGUAGE = {
+    "hi": "मैं पानी पूरी का टेला लगाता हूं मेरी उम्र पैंटीस साल है रोज आट्सो रुपय कमाता हूं",
+    "mr": "मी पानिपूरी चा थेला लाव तो, माजवै पस्तिस वर्शा है, रोज आच्छे रुपे कमाव तो",
+    "gu": "वो पानी पूरीनी लारी चलावूचु, मारी उम्मर पान्त्रिस वर्ष चे, रोज आट्सो रुप्या कमावूचु.",
+    "bn": "आनी पनी पुरी ख्याखा लाई आमार भायस पुत्रीष बच्छर प्रोटी दिन आख्शो ताका",
+    "ta": "என் வயது முப்பத்தையுந்து கினமும் 800 ரூபாய் சம்பாதிக்கிறேன்",
+    "te": "नेनु पानी पूरी बण्धी पेट्टुकुन्तान। ना वयसू 35 समत्सराल। रोजुकु 800 रूपायल।",
+    "kn": "ನಾನು ಪಾನೆ ಪುರ್ ಗಾಡಿಯಿ ಇಟ್ತಿದೇನೆ. ನಾನ್ನ ವಾಸು 35 ವಾಷ್ ದಿನಕ್ 800 ರೂಪಾಯ",
+    "en": "I run a pani puri cart. I am 35 years old. I earn 800 rupees daily.",
+}
+
+
+@pytest.mark.parametrize("lang", sorted(ASR_BY_LANGUAGE))
+def test_age_and_income_survive_asr_in_every_offered_language(lang):
+    heard = ASR_BY_LANGUAGE[lang]
+    assert pm._regex_age(heard) == 35, f"{lang}: lost the age"
+    daily, monthly = pm._regex_income(heard)
+    assert daily == 800.0, f"{lang}: lost the income"
+    assert monthly is None, f"{lang}: filed a daily wage as monthly"
+
+
+def test_a_number_word_is_not_matched_inside_a_longer_word():
+    """
+    तीसरा means "third". If the age branch closed with \\b this would be safe by
+    accident; it closes with an explicit terminator set instead, because Indic
+    vowel signs are combining marks and \\b does not fire after them. Guard both
+    properties at once.
+    """
+    assert pm._regex_age("यह मेरा तीसरा ठेला है") is None

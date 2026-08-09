@@ -5,14 +5,19 @@ The LLM's only job in the whole pipeline: turn a decision the rule engine
 already made into a sentence a person can act on, in their language. It is
 given the facts and told to phrase them. It is never asked what the answer is.
 
-Everything numeric is interpolated by us, not generated, so the model cannot
-invent a rupee figure or a deadline.
+Every number is interpolated by us, not generated. That is necessary and it is
+not sufficient: the model still has to carry our numbers through translation,
+and measured, it does not always — granite4:tiny-h turned ₹2,00,000 into
+२०००००० when asked for Marathi. So the narration is checked against the facts
+it was built from before it is spoken, and rejected if the money moved. See
+_misstated_money.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from . import eligibility
@@ -31,6 +36,41 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "narration_cache"
 def _cache_key(parts: list[str], lang: str) -> str:
     payload = json.dumps({"parts": parts, "lang": lang}, sort_keys=True)
     return hashlib.sha1(payload.encode()).hexdigest()[:20]
+
+
+# Indic digit scripts, so a number the model wrote as २०००००० or ௮௦௦ is compared
+# on the same footing as one it wrote as 2000000.
+_ANY_DIGITS = str.maketrans(
+    "०१२३४५६७८९" "০১২৩৪৫৬৭৮৯" "૦૧૨૩૪૫૬૭૮૯" "௦௧௨௩௪௫௬௭௮௯" "౦౧౨౩౪౫౬౭౮౯" "೦೧೨೩೪೫೬೭೮೯",
+    "0123456789" * 6,
+)
+
+# Below this we do not police the wording: step counts and day estimates get
+# legitimately rephrased ("about two days"). At and above it, every number is
+# money, and money is the one thing that must survive translation exactly.
+_MONEY_FLOOR = 100
+
+
+def _amounts_in(text: str) -> set[int]:
+    return {
+        int(run)
+        for run in re.findall(r"\d+", text.translate(_ANY_DIGITS))
+        if int(run) >= _MONEY_FLOOR
+    }
+
+
+def _misstated_money(spoken: str, parts: list[str]) -> set[int]:
+    """
+    Amounts the narration states that the facts never contained.
+
+    This exists because the prompt below already says "Never change a number"
+    and the model does it anyway. Measured: asked for Marathi, granite4:tiny-h
+    rendered PMSBY's ₹2,00,000 as २०००००० — twenty lakh, a tenfold overstatement
+    of a government benefit, twice in one answer. Telling a street vendor he is
+    owed ₹20,00,000 is the single worst thing this product could say, so it is
+    checked rather than requested.
+    """
+    return _amounts_in(spoken) - _amounts_in(" ".join(parts))
 
 
 def _cached(key: str) -> str | None:
@@ -181,17 +221,37 @@ def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -
 
     key = _cache_key(parts, lang)
     hit = _cached(key)
-    if hit:
+    # Checked on the way out of the cache as well as on the way in. These files
+    # are committed, and several were written before this guard existed — one of
+    # them holds the ₹20,00,000 Marathi line. A cache that can serve a figure the
+    # live path would now reject is just a slower way to say the wrong thing.
+    if hit and not _misstated_money(hit, parts):
         return hit
 
     language = LANG_NAMES.get(lang, "Hindi")
-    text = " ".join(chat(
-        prompt=f"Say this in {language}:\n\n" + "\n".join(parts),
-        system=SYSTEM,
-        temperature=0.2,
-    ).split())
-    _store(key, text)
-    return text
+    prompt = f"Say this in {language}:\n\n" + "\n".join(parts)
+
+    # Two attempts, then English. The retry drops to temperature 0 because the
+    # failure we are recovering from is the model being creative with a rupee
+    # figure. If both attempts misstate money we speak the facts in English
+    # rather than a fluent lie: a vendor who hears the right number in the wrong
+    # language can still act on it, and the operator console shows the text.
+    text = ""
+    for temperature in (0.2, 0.0):
+        text = " ".join(chat(prompt=prompt, system=SYSTEM, temperature=temperature).split())
+        if not _misstated_money(text, parts):
+            _store(key, text)
+            return text
+
+    bad = _misstated_money(text, parts)
+    print(
+        f"narrate: refusing {lang} narration, invented amounts {sorted(bad)}; "
+        f"falling back to English facts",
+        flush=True,
+    )
+    fallback = " ".join(parts)
+    _store(key, fallback)
+    return fallback
 
 
 def reasoning_steps(profile: Profile, decisions: list[Decision]) -> list[dict]:
