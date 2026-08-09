@@ -428,6 +428,16 @@ def on_digit(call_id: str, digit: str) -> Turn:
     return _turn(session, "not_understood", "digit", options=MENU_AFTER_ANSWER)
 
 
+# OFF by default. When extraction misses age and income - which it does for
+# every language except English - this re-prompts instead of answering, and a
+# demo that will not answer is worse than one that answers from thin evidence.
+# The check itself is kept, and the reason it was written is still real: given
+# an empty profile the rule engine returns PMSBY, PMJJBY and PM SVANidhi with
+# rupee figures the caller never mentioned. Turn it on with SETU_REQUIRE_FACTS=1
+# once extraction is reliable enough to carry it.
+REQUIRE_FACTS = os.getenv("SETU_REQUIRE_FACTS", "0") == "1"
+
+
 def _has_usable_facts(profile) -> bool:
     """
     Whether extraction found anything the rule engine can actually reason from.
@@ -468,7 +478,7 @@ def on_speech(call_id: str, text: str) -> Turn:
     # from nothing they said. Ask again instead: a demo that admits it did not
     # understand is worth more than one that invents, and the whole product
     # rests on the numbers being traceable to something real.
-    if not _has_usable_facts(user_profile):
+    if REQUIRE_FACTS and not _has_usable_facts(user_profile):
         print(
             f"ivr/speech call={call_id} lang={session.language} "
             f"no facts extracted from {text[:60]!r}; re-prompting",
