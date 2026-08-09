@@ -70,8 +70,9 @@ schemes:
         source_doc: Scheme Guidelines.pdf
         source_page: 3
         source_quote: >-
-          In statutory towns, the Certificate of Vending (CoV)/Identity Card/Letter
-          of Recommendation is the basis for identifying eligible vendors.
+          In statutory towns , the Certificate of Vending (CoV)/Identity
+          Card/Letter of Recommendation (LoR) to the street vendors will be
+          issued by TVC/ ULBs.
         # ── THE LADDER RUNG. This is the rule most vendors fail, and the one
         #    with a real, cheap, fast fix. It is the centrepiece of the demo.
         remedy:
@@ -215,10 +216,11 @@ schemes:
         source_doc: PMSBY Guidelines.pdf
         source_page: 2
         source_quote: >-
-          Individual bank/Post office account holders of participating banks/
-          Post office aged between 18 years (completed) and 70 years (age nearer
-          birthday) who give their consent to join / enable auto-debit will be
-          enrolled into the scheme.
+          Eligibility Conditions: Individual bank/ Post office account holders of
+          participating banks/ Post office aged between 18 years (completed) and
+          70 years (age nearer birthday) who give their consent to join / enable
+          auto -debit, as per the above modality, will be enrolled into the
+          scheme.
         remedy: null   # age is not remediable by any action
 
       - id: pmsby_max_age
@@ -292,10 +294,10 @@ schemes:
         source_doc: PMJJBY Rules.pdf
         source_page: 2
         source_quote: >-
-          The savings bank account holders of the participating banks aged
+          The savings bank account holder s of the participating banks aged
           between 18 years (completed) and 50 years (age nearer birthday) who
-          give their consent to join / enable auto-debit will be enrolled into
-          the scheme.
+          give their consent to join / enable auto -debit, as per the above
+          modality, will be enrolled int o the scheme.
         remedy: null
 
       - id: pmjjby_max_age
@@ -373,9 +375,10 @@ schemes:
         source_doc: FSSAI_Licensing_Registration_Regulations_2011.pdf
         source_page: 2
         source_quote: >-
-          ...tiny food businesses with an annual turnover not exceeding Rs 12
-          lakhs and/or whose production capacity of food does not exceed 100
-          kg/ltr per day.
+          tiny food businesses with an annual turnover not exceeding Rs 12 lakhs
+          and/or whose (i) production capacity of food (other than milk and milk
+          products and meat and meat products) does not exceed 100 kg/ltr per
+          day
         # Not a ladder rung: a State Licence is a different registration, so
         # "get one" never makes you eligible for Basic Registration. Recording
         # it as a remedy made verify_ladder fail, correctly.

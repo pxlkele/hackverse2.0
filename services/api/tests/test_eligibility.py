@@ -242,3 +242,27 @@ def test_age_failure_offers_no_false_hope():
     profile = vendor(age=75)
     decision = pf.build_ladder(profile, el.evaluate_scheme(profile, el.get_scheme("pmsby")))
     assert decision.ladder is None
+
+
+def test_every_citation_is_verbatim_from_its_pdf():
+    """
+    The product's central claim is that any decision traces to a real line of a
+    real government document. A paraphrased quote breaks that the moment a judge
+    opens the PDF, so this runs as part of the ordinary test suite.
+
+    Skipped when the source PDFs are not present (they are large; a clone that
+    only wants the engine does not need them).
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3]
+    if not (root / "ingestion" / "sources").exists():
+        pytest.skip("source PDFs not present")
+
+    result = subprocess.run(
+        [sys.executable, str(root / "eval" / "verify_citations.py")],
+        capture_output=True, text=True, cwd=root,
+    )
+    assert result.returncode == 0, result.stdout

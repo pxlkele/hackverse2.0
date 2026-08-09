@@ -25,10 +25,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ROOT / "ingestion" / "sources"
 SCHEMES = ROOT / "services" / "api" / "data" / "schemes.yaml"
 
-# How much of a quote must match. Quotes are lightly reflowed when written into
-# YAML, and some are stitched from adjacent lines, so we probe a distinctive
-# prefix rather than demanding the whole thing.
-PROBE_CHARS = 60
+# Quotes must match in FULL, not just a distinctive prefix. A prefix check
+# passes a quote whose tail was paraphrased, which is exactly the failure mode
+# that matters: a judge opening the PDF reads the whole sentence, not the first
+# sixty characters.
 
 
 def squash(text: str) -> str:
@@ -88,13 +88,26 @@ def main() -> int:
             problems.append(f"NO FILE     {rule_id}: {doc} is not in ingestion/sources")
             continue
 
-        probe = squash(quote)[:PROBE_CHARS]
-        found_on = [i for i, text in enumerate(page_texts, 1) if probe and probe in text]
+        target = squash(quote)
+        found_on = [i for i, text in enumerate(page_texts, 1) if target and target in text]
 
         if not found_on:
+            # Report how far it matched before diverging - the useful signal is
+            # usually "the first sentence is real, the tail was paraphrased".
+            matched = 0
+            for text in page_texts:
+                lo, hi = 0, len(target)
+                while lo < hi:
+                    mid = (lo + hi + 1) // 2
+                    if target[:mid] in text:
+                        lo = mid
+                    else:
+                        hi = mid - 1
+                matched = max(matched, lo)
+            pct = 100 * matched // max(len(target), 1)
             problems.append(
-                f"NOT FOUND   {rule_id}: quote does not appear in {doc}\n"
-                f"            {str(quote)[:100]}..."
+                f"NOT VERBATIM {rule_id}: {pct}% of the quote matches {doc}, then diverges\n"
+                f"             text is real up to: ...{str(quote)[:matched + 12][-70:]}"
             )
         elif page and page not in found_on:
             page_fixes.append((rule_id, doc, page, found_on[0]))
