@@ -419,8 +419,30 @@ def _enrich(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]
 _EXTRACT_CACHE = Path(__file__).resolve().parent.parent / "data" / "profile_cache"
 
 
+def _rules_fingerprint() -> str:
+    """
+    A short hash of the deterministic parsing tables.
+
+    It goes in the cache key so that fixing the parser invalidates every entry
+    the old parser wrote. Without this a cached profile silently outlives the
+    bug it was computed under — and these files are committed, so one stale
+    entry would mask the fix on every machine that clones the repo.
+
+    Not hypothetical: the Devanagari parsing bug was fixed twice, and the second
+    time an entry written before the fix kept returning age=None for a
+    transcript the repaired parser reads as 35.
+    """
+    tables = repr((sorted(_UNITS.items()), sorted(_SCALES.items()),
+                   [p.pattern for p, _ in _ASR_SPELLINGS], _RUPEE_WORDS))
+    return hashlib.sha1(tables.encode()).hexdigest()[:8]
+
+
+_RULES_FP = _rules_fingerprint()
+
+
 def _cache_path(text: str, language: str) -> Path:
-    key = hashlib.sha1(f"{language}:{text}".encode()).hexdigest()[:20]
+    # Parser fingerprint first: a rules change must not reuse an old answer.
+    key = hashlib.sha1(f"{_RULES_FP}:{language}:{text}".encode()).hexdigest()[:20]
     return _EXTRACT_CACHE / f"{key}.json"
 
 
