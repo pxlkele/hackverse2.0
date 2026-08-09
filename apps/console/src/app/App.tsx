@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import UniqueLoading from "@/app/components/ui/morph-loading";
+import { apiFetch, apiEventStream, apiUrl } from "@/lib/api";
 import {
   Mic, Database, Volume2, Send, RotateCcw, CheckCircle2,
   Loader2, Activity, FileText, TrendingUp, Upload, AlertTriangle,
@@ -388,21 +389,19 @@ function PipelineTab() {
 
   // Phone → console bridge. When the Twilio webhook transcribes what the
   // caller said, mirror it into the input textarea so the operator sees it live.
+  // Uses fetch-based streaming so the ngrok header can be set (native
+  // EventSource doesn't support custom headers).
   useEffect(() => {
-    const es = new EventSource("/api/phone/stream");
-    es.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        if (data.type === "call_started") {
-          setPhoneLive({ from: data.from || "unknown" });
-        } else if (data.type === "user_speech" && data.text) {
-          setInput(data.text);
-        } else if (data.type === "call_ended") {
-          setPhoneLive(null);
-        }
-      } catch { /* keepalive / comment lines */ }
-    };
-    return () => es.close();
+    const stop = apiEventStream("/api/phone/stream", (data: any) => {
+      if (data?.type === "call_started") {
+        setPhoneLive({ from: data.from || "unknown" });
+      } else if (data?.type === "user_speech" && data.text) {
+        setInput(data.text);
+      } else if (data?.type === "call_ended") {
+        setPhoneLive(null);
+      }
+    });
+    return stop;
   }, []);
   const r0 = useRef<HTMLDivElement>(null);
   const r1 = useRef<HTMLDivElement>(null);
@@ -419,7 +418,7 @@ function PipelineTab() {
 
     let res: ReasonResponse;
     try {
-      const r = await fetch("/api/reason", {
+      const r = await apiFetch("/api/reason", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: input.trim(), language: lang }),
       });
@@ -724,7 +723,7 @@ function RulesPanel({ steps, color }: { steps: PipelineStep[]; color: string }) 
 function OutcomePanel({ result, color }: { result: ReasonResponse; color: string }) {
   const ladders = result.steps.filter(s => s.kind === "ladder") as LadderBlock[];
   const eligible = result.decisions.filter(d => d.status === "eligible");
-  const audioSrc = result.audio_path ? `/api/audio?path=${encodeURIComponent(result.audio_path)}` : null;
+  const audioSrc = result.audio_path ? apiUrl(`/api/audio?path=${encodeURIComponent(result.audio_path)}`) : null;
   const spokenExpanded = expandAcronyms(result.spoken_text);
 
   return (
@@ -857,7 +856,7 @@ function DocDoctorTab() {
     const fd = new FormData();
     files.forEach(f => fd.append("files", f, f.name));
     try {
-      const r = await fetch("/api/documents/check", { method:"POST", body:fd });
+      const r = await apiFetch("/api/documents/check", { method:"POST", body:fd });
       if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
       setReport(await r.json());
     } catch(e) { setError(e instanceof Error ? e.message : "Check failed"); }
@@ -982,7 +981,7 @@ function LedgerTab() {
   const fetchStatement = useCallback(async (uid = userId) => {
     setLoading(true); setError("");
     try {
-      const r = await fetch(`/api/ledger/statement?user_id=${uid}&days=30`);
+      const r = await apiFetch(`/api/ledger/statement?user_id=${uid}&days=30`);
       if (!r.ok) throw new Error(`API ${r.status}`);
       setStatement(await r.json());
     } catch(e) { setError(e instanceof Error ? e.message : "Failed"); }
@@ -992,7 +991,7 @@ function LedgerTab() {
   const seed = async () => {
     setSeeding(true); setError("");
     try {
-      await fetch(`/api/ledger/seed?user_id=${userId}&days=30`, { method:"POST" });
+      await apiFetch(`/api/ledger/seed?user_id=${userId}&days=30`, { method:"POST" });
       await fetchStatement();
     } catch(e) { setError(e instanceof Error ? e.message : "Seed failed"); }
     finally { setSeeding(false); }
@@ -1002,7 +1001,7 @@ function LedgerTab() {
     if (!entry.trim()) return;
     setPosting(true); setPostMsg("");
     try {
-      const r = await fetch("/api/ledger/entry", {
+      const r = await apiFetch("/api/ledger/entry", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ text: entry.trim(), user_id: userId }),
       });
