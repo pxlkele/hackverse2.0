@@ -33,3 +33,4 @@ apps/console/dist/
 services/api/data/narration_cache/
 services/api/data/profile_cache/
 services/api/data/voice_cache/
+scripts/CURRENT_URL.txt

@@ -115,6 +115,20 @@
   }
   .human svg { width: 27px; height: 27px; fill: var(--ink); }
 
+  /* Stop and start-over. Deliberately full width and side by side directly
+     under the talk button: the moment you need them is the moment the app is
+     talking over you, and hunting for a small control while it does that is
+     the whole problem. */
+  .controls { display: flex; gap: 10px; margin: -8px 0 20px; }
+  .ctrl {
+    flex: 1; min-height: 58px; border-radius: 12px; font-family: inherit;
+    font-size: 17px; font-weight: 700; background: transparent;
+    border: 2px solid var(--line); color: var(--ink);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .ctrl svg { width: 22px; height: 22px; fill: currentColor; }
+  .ctrl.stop { border-color: var(--red); color: #ff9d92; }
+
   .offline {
     display: none; background: var(--amber); color: #241f00; text-align: center;
     padding: 9px; font-weight: 700; font-size: 15px;
@@ -138,6 +152,17 @@
       <span id="talkLabel">बोलिए</span>
     </button>
     <div class="status" id="status">अपने बारे में बताइए</div>
+  </div>
+
+  <div class="controls">
+    <button class="ctrl stop" id="halt">
+      <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <span id="haltLabel">रोकिए</span>
+    </button>
+    <button class="ctrl" id="reset">
+      <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V9a5 5 0 1 1-5 5H5a7 7 0 1 0 7-9z"/></svg>
+      <span id="resetLabel">नई शुरुआत</span>
+    </button>
   </div>
 
   <div id="answerCard" class="card hidden">
@@ -164,47 +189,78 @@ const T = {
         prompt:'अपने बारे में बताइए', talk:'बोलिए', stop:'रोकिए', listening:'सुन रहे हैं…',
         thinking:'सरकारी नियम देख रहे हैं…', replay:'फिर से सुनिए', human:'किसी व्यक्ति से बात करें',
         err:'दोबारा कोशिश कीजिए', free:'मुफ़्त', days:'दिन', steps:'कदम',
-        denied:'माइक की इजाज़त दीजिए', insecure:'यह पेज सुरक्षित नहीं है', tooShort:'ज़्यादा देर बोलिए' },
+        denied:'माइक की इजाज़त दीजिए', insecure:'यह पेज सुरक्षित नहीं है', tooShort:'ज़्यादा देर बोलिए', offline:'सर्वर से संपर्क नहीं हो रहा', halt:'रोकिए', reset:'नई शुरुआत' },
   en: { label:'EN', tag:'en-IN',
         prompt:'Tell us about your work', talk:'Speak', stop:'Stop', listening:'Listening…',
         thinking:'Checking government rules…', replay:'Play again', human:'Talk to a person',
         err:'Please try again', free:'free', days:'days', steps:'steps',
-        denied:'Please allow the microphone', insecure:'This page needs HTTPS for the mic', tooShort:'Speak a little longer' },
+        denied:'Please allow the microphone', insecure:'This page needs HTTPS for the mic', tooShort:'Speak a little longer', offline:'Cannot reach the server', halt:'Stop', reset:'Start over' },
   mr: { label:'मराठी', tag:'mr-IN',
         prompt:'तुमच्याबद्दल सांगा', talk:'बोला', stop:'थांबा', listening:'ऐकत आहोत…',
         thinking:'सरकारी नियम पाहत आहोत…', replay:'पुन्हा ऐका', human:'एखाद्या व्यक्तीशी बोला',
         err:'पुन्हा प्रयत्न करा', free:'मोफत', days:'दिवस', steps:'पायऱ्या',
-        denied:'माइकची परवानगी द्या', insecure:'हे पेज सुरक्षित नाही', tooShort:'थोडं जास्त वेळ बोला' },
+        denied:'माइकची परवानगी द्या', insecure:'हे पेज सुरक्षित नाही', tooShort:'थोडं जास्त वेळ बोला', offline:'सर्व्हरशी संपर्क होत नाही', halt:'थांबवा', reset:'नवीन सुरुवात' },
   gu: { label:'ગુજરાતી', tag:'gu-IN',
         prompt:'તમારા વિશે કહો', talk:'બોલો', stop:'રોકો', listening:'સાંભળી રહ્યા છીએ…',
         thinking:'સરકારી નિયમો જોઈ રહ્યા છીએ…', replay:'ફરી સાંભળો', human:'કોઈ વ્યક્તિ સાથે વાત કરો',
         err:'ફરી પ્રયત્ન કરો', free:'મફત', days:'દિવસ', steps:'પગલાં',
-        denied:'માઇકની પરવાનગી આપો', insecure:'આ પેજ સુરક્ષિત નથી', tooShort:'થોડું વધુ બોલો' },
+        denied:'માઇકની પરવાનગી આપો', insecure:'આ પેજ સુરક્ષિત નથી', tooShort:'થોડું વધુ બોલો', offline:'સર્વર સાથે સંપર્ક થતો નથી', halt:'બંધ કરો', reset:'નવી શરૂઆત' },
   bn: { label:'বাংলা', tag:'bn-IN',
         prompt:'আপনার কথা বলুন', talk:'বলুন', stop:'থামুন', listening:'শুনছি…',
         thinking:'সরকারি নিয়ম দেখছি…', replay:'আবার শুনুন', human:'কারও সঙ্গে কথা বলুন',
         err:'আবার চেষ্টা করুন', free:'বিনামূল্যে', days:'দিন', steps:'ধাপ',
-        denied:'মাইকের অনুমতি দিন', insecure:'এই পেজ সুরক্ষিত নয়', tooShort:'একটু বেশি সময় বলুন' },
+        denied:'মাইকের অনুমতি দিন', insecure:'এই পেজ সুরক্ষিত নয়', tooShort:'একটু বেশি সময় বলুন', offline:'সার্ভারে পৌঁছানো যাচ্ছে না', halt:'থামান', reset:'নতুন করে শুরু' },
   ta: { label:'தமிழ்', tag:'ta-IN',
         prompt:'உங்களைப் பற்றி சொல்லுங்கள்', talk:'பேசுங்கள்', stop:'நிற்க', listening:'கேட்கிறோம்…',
         thinking:'அரசு விதிகளைப் பார்க்கிறோம்…', replay:'மீண்டும் கேளுங்கள்', human:'ஒருவருடன் பேசுங்கள்',
         err:'மீண்டும் முயற்சிக்கவும்', free:'இலவசம்', days:'நாட்கள்', steps:'படிகள்',
-        denied:'மைக் அனுமதி தாருங்கள்', insecure:'இந்தப் பக்கம் பாதுகாப்பானது அல்ல', tooShort:'இன்னும் கொஞ்சம் நேரம் பேசுங்கள்' },
+        denied:'மைக் அனுமதி தாருங்கள்', insecure:'இந்தப் பக்கம் பாதுகாப்பானது அல்ல', tooShort:'இன்னும் கொஞ்சம் நேரம் பேசுங்கள்', offline:'சேவையகத்தை அணுக முடியவில்லை', halt:'நிறுத்து', reset:'மீண்டும் தொடங்கு' },
   te: { label:'తెలుగు', tag:'te-IN',
         prompt:'మీ గురించి చెప్పండి', talk:'మాట్లాడండి', stop:'ఆపండి', listening:'వింటున్నాము…',
         thinking:'ప్రభుత్వ నియమాలు చూస్తున్నాము…', replay:'మళ్ళీ వినండి', human:'ఒక వ్యక్తితో మాట్లాడండి',
         err:'మళ్ళీ ప్రయత్నించండి', free:'ఉచితం', days:'రోజులు', steps:'అడుగులు',
-        denied:'మైక్ అనుమతి ఇవ్వండి', insecure:'ఈ పేజీ సురక్షితం కాదు', tooShort:'కొంచెం ఎక్కువ సమయం మాట్లాడండి' },
+        denied:'మైక్ అనుమతి ఇవ్వండి', insecure:'ఈ పేజీ సురక్షితం కాదు', tooShort:'కొంచెం ఎక్కువ సమయం మాట్లాడండి', offline:'సర్వర్‌ను చేరుకోలేకపోతున్నాము', halt:'ఆపండి', reset:'కొత్తగా ప్రారంభించండి' },
   kn: { label:'ಕನ್ನಡ', tag:'kn-IN',
         prompt:'ನಿಮ್ಮ ಬಗ್ಗೆ ಹೇಳಿ', talk:'ಮಾತನಾಡಿ', stop:'ನಿಲ್ಲಿಸಿ', listening:'ಕೇಳುತ್ತಿದ್ದೇವೆ…',
         thinking:'ಸರ್ಕಾರಿ ನಿಯಮಗಳನ್ನು ನೋಡುತ್ತಿದ್ದೇವೆ…', replay:'ಮತ್ತೆ ಕೇಳಿ', human:'ಒಬ್ಬ ವ್ಯಕ್ತಿಯೊಂದಿಗೆ ಮಾತನಾಡಿ',
         err:'ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ', free:'ಉಚಿತ', days:'ದಿನಗಳು', steps:'ಹಂತಗಳು',
-        denied:'ಮೈಕ್ ಅನುಮತಿ ನೀಡಿ', insecure:'ಈ ಪುಟ ಸುರಕ್ಷಿತವಾಗಿಲ್ಲ', tooShort:'ಸ್ವಲ್ಪ ಹೆಚ್ಚು ಸಮಯ ಮಾತನಾಡಿ' },
+        denied:'ಮೈಕ್ ಅನುಮತಿ ನೀಡಿ', insecure:'ಈ ಪುಟ ಸುರಕ್ಷಿತವಾಗಿಲ್ಲ', tooShort:'ಸ್ವಲ್ಪ ಹೆಚ್ಚು ಸಮಯ ಮಾತನಾಡಿ', offline:'ಸರ್ವರ್ ತಲುಪಲು ಆಗುತ್ತಿಲ್ಲ', halt:'ನಿಲ್ಲಿಸಿ', reset:'ಹೊಸದಾಗಿ ಪ್ರಾರಂಭಿಸಿ' },
 };
+
+/* Which backend to talk to.
+ *
+ * Empty means same-origin, which is the normal case: FastAPI serves this page
+ * itself, so relative paths already reach it and nothing here has to know its
+ * own URL. That is the path that has been demoed and it stays the default.
+ *
+ * It only needs setting when the console and the phone sit behind *different*
+ * tunnels and the operator wants to watch cases arrive live. Tunnel URLs are
+ * regenerated on every restart, so hard-coding one guarantees a dead build at
+ * the worst moment - it comes from `?api=https://...` instead and is remembered,
+ * because an installed PWA is launched from the home screen with no query
+ * string. `?api=` on its own clears it and returns to same-origin.
+ */
+const API_BASE = (() => {
+  const q = new URLSearchParams(location.search);
+  if (q.has('api')) {
+    const v = (q.get('api') || '').trim().replace(/\/+$/, '');
+    try { v ? localStorage.setItem('setuApi', v) : localStorage.removeItem('setuApi'); } catch {}
+    return v;
+  }
+  try { return localStorage.getItem('setuApi') || ''; } catch { return ''; }
+})();
+
+/* ngrok answers a browser-looking request with an HTML interstitial instead of
+   the JSON it was asked for. That fails *successfully* - HTTP 200, unparseable
+   body - so it reads as a broken app rather than a missing header. Harmless to
+   send when the header means nothing, so it always goes. */
+const API_HEADERS = API_BASE ? { 'ngrok-skip-browser-warning': 'true' } : {};
+const apiUrl = path => API_BASE + path;
 
 let lang = 'hi', callId = null, recorder = null, chunks = [], lastAudio = null, lastReason = null;
 let lastSpoken = '';        // the answer's words, so we can speak it without the server's mp3
 let audioUnlocked = false;
+let inflight = null;        // AbortController for the request in flight, so Stop can cut it
 const $ = id => document.getElementById(id);
 const t = () => T[lang];
 
@@ -253,13 +309,18 @@ function applyLang() {
   $('talkLabel').textContent = t().talk;
   $('replayLabel').textContent = t().replay;
   $('humanLabel').textContent = t().human;
+  $('haltLabel').textContent = t().halt;
+  $('resetLabel').textContent = t().reset;
   if (!callId) $('status').textContent = t().prompt;
 }
 
 async function api(path, body, isForm) {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method: 'POST',
-    ...(isForm ? { body } : { headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }),
+    signal: inflight ? inflight.signal : undefined,
+    ...(isForm
+      ? { headers: { ...API_HEADERS }, body }
+      : { headers: { 'Content-Type':'application/json', ...API_HEADERS }, body: JSON.stringify(body) }),
   });
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -297,12 +358,35 @@ function unlockAudio() {
    lastAudio is assigned on every single answer, including when there is no
    audio at all: leaving the previous turn's url in place is what made the
    replay button play "I could not hear you" over an answer that had arrived. */
-function playAnswer(url, text) {
-  lastAudio = url || null;
+/* Cross-origin only. An <audio> element cannot carry a header, so pointing src
+   straight at a tunnel gets the interstitial HTML instead of the mp3 and the
+   answer plays as silence. Fetching it ourselves is the only way to send the
+   header, and the blob is kept per path so replay does not pay for it twice. */
+const audioBlobs = new Map();
+
+async function audioSrc(path) {
+  if (!API_BASE) return path;                       // same-origin: the proven path, untouched
+  if (audioBlobs.has(path)) return audioBlobs.get(path);
+  const res = await fetch(apiUrl(path), { headers: { ...API_HEADERS } });
+  if (!res.ok) throw new Error('audio ' + res.status);
+  const blob = await res.blob();
+  if (!blob.type.startsWith('audio/')) throw new Error('not audio: ' + blob.type);
+  const objectUrl = URL.createObjectURL(blob);
+  audioBlobs.set(path, objectUrl);
+  return objectUrl;
+}
+
+async function playAnswer(url, text) {
+  lastAudio = url || null;                 // the server path, so replay stays a cache hit
   if (text) lastSpoken = text;
   if (!url) { say(lastSpoken); return; }   // server TTS failed - the device voice still speaks
   const p = $('player');
-  p.src = url;
+  try {
+    p.src = await audioSrc(url);
+  } catch {
+    say(lastSpoken);                       // unreachable or interstitial - speak it on the device
+    return;
+  }
   const r = p.play();
   if (r) r.catch(() => say(lastSpoken));   // still blocked - fall back rather than go silent
 }
@@ -386,7 +470,9 @@ async function startRec() {
         return;
       }
       fd.append('audio', blob, 'clip.' + extFor(outType));
+      inflight = new AbortController();
       const res = await api('/api/ivr/speech', fd, true);
+      inflight = null;
       /* The server detects the spoken language and may have switched the call to
          it. Follow that here, so the labels and the answer are in one language
          instead of two — otherwise a Marathi answer sits under Hindi buttons. */
@@ -399,9 +485,14 @@ async function startRec() {
       // the caller, and it only appears when something actually went wrong.
       $('status').textContent = lastReason ? `(${lastReason})` : '';
     } catch (e) {
-      $('status').textContent = t().err;
-      say(t().err);
+      // Stop aborts this fetch on purpose. Announcing "please try again" for
+      // something the caller just asked for would be the app arguing back.
+      if (e.name !== 'AbortError') {
+        $('status').textContent = t().err;
+        say(t().err);
+      }
     } finally {
+      inflight = null;
       $('status').classList.remove('thinking');
       $('talk').disabled = false;
     }
@@ -430,15 +521,66 @@ $('talk').onclick = async () => {
        blocked mic the caller can fix; a page served over plain http:// has no
        getUserMedia at all and only we can fix it — and silently showing
        "try again" for that would have us debugging the wrong thing on stage. */
+    /* A dead tunnel looks exactly like a broken microphone from here: the tap
+       calls ensureCall() before it ever touches the mic, that fetch fails, and
+       the caller is told to try again by a button that will never work until
+       the tunnel is restarted. Name it, so the next hour is not spent
+       debugging the microphone. */
+    const unreachable = e instanceof TypeError || e.name === 'TypeError';
     const insecure = !window.isSecureContext || e.message === 'no-mic-api';
     const denied = e.name === 'NotAllowedError' || e.name === 'SecurityError';
-    $('status').textContent = insecure ? t().insecure : denied ? t().denied : t().err;
+    $('status').textContent = insecure ? t().insecure
+      : denied ? t().denied
+      : unreachable ? (t().offline || t().err)
+      : t().err;
     say($('status').textContent);
     recorder = null;
   }
 };
 
 $('replay').onclick = () => { unlockAudio(); playAnswer(lastAudio, lastSpoken); };
+
+/* Everything that can be making noise or work, stopped at once. Four separate
+   things can be running: the recorder, the request, the server's mp3 and the
+   device voice, and stopping only some of them is what makes an app feel like
+   it is ignoring you. */
+function stopEverything() {
+  if (inflight) { inflight.abort(); inflight = null; }
+  clearTimeout(capTimer);
+  if (recorder && recorder.state === 'recording') {
+    try { recorder.stop(); } catch (e) { /* already stopped */ }
+  }
+  recorder = null;
+  const p = $('player');
+  try { p.pause(); p.currentTime = 0; } catch (e) { /* nothing loaded yet */ }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  $('talk').disabled = false;
+  $('talk').classList.remove('rec');
+  $('talkLabel').textContent = t().talk;
+  $('status').classList.remove('thinking');
+}
+
+$('halt').onclick = () => {
+  stopEverything();
+  $('status').textContent = t().prompt;
+};
+
+/* Back to the opening screen without a reload — a reload on a quick tunnel is
+   a gamble on the service worker and the network, and this has to work while
+   someone is standing there waiting. A fresh call_id means the next question
+   is a new conversation, not a follow-up to the last one. */
+$('reset').onclick = () => {
+  stopEverything();
+  callId = null;
+  lastAudio = null; lastSpoken = ''; lastReason = null;
+  $('answerText').textContent = '';
+  $('answerCard').classList.add('hidden');
+  $('human').classList.add('hidden');
+  $('schemes').innerHTML = '';
+  $('status').textContent = t().prompt;
+  window.scrollTo({ top: 0 });
+  say(t().prompt);
+};
 
 $('human').onclick = async () => {
   say(t().human);

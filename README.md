@@ -8,7 +8,7 @@ Built for IBM Hackathon Hackverse 2.0.
 ## Demo
 
 The vendor's phone (PWA):
-**https://outer-ensemble-pillow-three.trycloudflare.com/pwa/**
+**https://decorating-thereof-tax-white.trycloudflare.com/pwa/**
 
 The IVR handset simulator is at `/` on the same host.
 

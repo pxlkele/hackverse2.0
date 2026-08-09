@@ -271,15 +271,21 @@ REAL_PHONE_SPEECH = {
 @pytest.mark.parametrize("key", sorted(REAL_PHONE_SPEECH))
 def test_real_phone_speech_yields_something_to_reason_from(key):
     """
-    Not asserting a particular category: "trader" and "street_vendor" are both
-    defensible readings of "I run a pani puri shop", and which one comes back
-    depends on the model. What must never happen is nothing at all, because an
-    empty profile is what makes the channel re-prompt instead of answering.
+    Driven through _enrich rather than extract(): the keyword tables are what
+    this is testing, and they are deterministic. Going through extract() would
+    put a language model in the middle of the assertion, which made this flaky
+    on the second run and cost five minutes per suite.
+
+    Not asserting a particular category either - "trader" and "street_vendor"
+    are both defensible readings of "I run a pani puri shop". What must never
+    happen is nothing at all, because an empty profile is what makes the
+    channel re-prompt instead of answering.
     """
-    text, lang = REAL_PHONE_SPEECH[key]
-    profile = pm.extract(text, language=lang, use_cache=False)
-    assert profile.sells_food is True
-    assert profile.occupation_category is not None
+    text, _lang = REAL_PHONE_SPEECH[key]
+    data, derived = pm._enrich({}, text)
+    assert data.get("sells_food") is True
+    assert data.get("occupation_category") is not None
+    assert derived, "a fact with no derivation note cannot be audited"
 
 
 def test_keyword_tables_are_in_the_cache_fingerprint():

@@ -9,6 +9,7 @@ Endpoints exist so the dashboard can render the full chain:
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import time
@@ -62,7 +63,16 @@ def _warm_models() -> None:
     """
     llm.warm()
     voice.warm()
-    doc_doctor.warm()   # 2.4GB vision model: ~47s cold, ~3.5s warm
+
+    # The vision model is 2.4GB resident. On a laptop already holding Granite,
+    # Whisper small and (for Telugu and Kannada) Whisper medium, keeping it
+    # loaded is what turns a steady 6s answer into an erratic one: the same
+    # hi.mp3 measured asr=6.4s on one request and asr=52.9s on another, with
+    # nothing else running and a load average above 8. Set SETU_WARM=voice for
+    # a voice-only demo and the document checker still works, it just pays its
+    # ~47s cold start on first use. Default is unchanged.
+    if os.getenv("SETU_WARM", "all") != "voice":
+        doc_doctor.warm()   # 2.4GB vision model: ~47s cold, ~3.5s warm
 
 
 @app.get("/api/health")
