@@ -129,3 +129,58 @@ def test_three_documents_are_compared_pairwise():
         ExtractedDoc(doc_type="voter_id", name="RAMESH KUMAR"),
     ])
     assert len(findings) == 2  # passbook vs each of the other two
+
+
+# ── Extraction plumbing ──────────────────────────────────────────────────────
+
+def test_downscale_shrinks_large_images_and_keeps_small_ones():
+    """
+    Vision latency scales with pixels and a phone photo is enormous. Small
+    images must pass through untouched rather than being upscaled.
+    """
+    import io
+
+    from PIL import Image
+
+    from services.api.core.doc_doctor import MAX_EDGE, _downscale
+
+    def size_of(w, h, tmp):
+        Image.new("RGB", (w, h), "white").save(tmp)
+        with Image.open(io.BytesIO(_downscale(tmp))) as out:
+            return out.size
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as d:
+        big = Path(d) / "big.png"
+        assert max(size_of(4000, 3000, big)) == MAX_EDGE
+
+        small = Path(d) / "small.png"
+        assert size_of(800, 600, small) == (800, 600)
+
+
+def test_downscale_survives_a_file_pillow_cannot_open():
+    """A PDF or a corrupt upload must not take the whole request down."""
+    import tempfile
+    from pathlib import Path
+
+    from services.api.core.doc_doctor import _downscale
+
+    with tempfile.TemporaryDirectory() as d:
+        junk = Path(d) / "not-an-image.pdf"
+        junk.write_bytes(b"%PDF-1.4 not really")
+        assert _downscale(junk) == b"%PDF-1.4 not really"
+
+
+def test_review_reports_whether_the_reading_can_be_trusted():
+    """
+    A finding built on an OCR reading deserves a caveat, because OCR is what
+    misreads names. The flag has to exist for the UI to show one.
+    """
+    import inspect
+
+    from services.api.core import doc_doctor
+
+    source = inspect.getsource(doc_doctor.review)
+    assert "reading_is_reliable" in source

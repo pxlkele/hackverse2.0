@@ -9,9 +9,19 @@ was never meant for people like them.
 This reads the documents a person actually holds, extracts the identity fields,
 and compares them against each other *before* anything is submitted.
 
-Two extraction paths, same fallback discipline as the rest of the system:
-    granite3.2-vision  if the model is present (better on cards and photos)
-    Docling OCR        otherwise — no extra download, works offline
+Two stages, because each model is good at a different thing:
+    granite3.2-vision  reads the pixels and returns prose
+    granite4:tiny-h    turns that prose into typed fields
+
+Constraining the vision model to a JSON schema made it hang past a two-minute
+timeout, so it transcribes and the text model structures.
+
+Docling OCR is the fallback, and only the fallback. Measured on the same cards,
+OCR read "RAMESH H KUMAR" off one printed "RAMESH KUMAR" and dropped another
+name entirely — a doubling artifact invents a mismatch that isn't there, and a
+dropped name hides one that is. Both failures are worse than useless for a
+feature whose whole job is comparing spellings, so a reading that fell back to
+OCR is flagged as unreliable rather than reported as fact.
 
 Nothing here decides eligibility. It reports what differs and how badly.
 """
@@ -187,30 +197,97 @@ def vision_available() -> bool:
         return False
 
 
-def _extract_with_vision(image_path: Path) -> dict[str, Any]:
+# Phone photographs are enormous and vision latency scales with pixels. 1600px
+# on the long edge is plenty to read a printed name and keeps a card under a
+# second of encoding.
+MAX_EDGE = 1600
+
+# The model needs to stay resident: loading 2.4GB per request turned a 3.5s
+# inference into a 120s timeout, which then fell through to OCR and took 170s
+# in total.
+KEEP_ALIVE = "30m"
+
+
+def _downscale(image_path: Path) -> bytes:
+    """Shrink to MAX_EDGE, returning the original bytes if PIL can't open it."""
+    try:
+        import io
+
+        from PIL import Image
+
+        with Image.open(image_path) as img:
+            img = img.convert("RGB")
+            if max(img.size) > MAX_EDGE:
+                ratio = MAX_EDGE / max(img.size)
+                img = img.resize(
+                    (int(img.width * ratio), int(img.height * ratio)),
+                    Image.LANCZOS,
+                )
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=88)
+            return buffer.getvalue()
+    except Exception:
+        return image_path.read_bytes()
+
+
+def _transcribe_with_vision(image_path: Path) -> str:
+    """
+    Granite Vision reads the pixels and returns prose, not JSON.
+
+    Constraining it to a JSON schema made the call hang past a two-minute
+    timeout — a vision model doing constrained decoding is a bad trade. Let it
+    do what it is good at (reading), and let the text model do what it is good
+    at (structuring). Vision ~3.5s warm, structuring ~2s.
+    """
     import base64
 
-    encoded = base64.b64encode(image_path.read_bytes()).decode()
-    with httpx.Client(timeout=TIMEOUT) as client:
+    encoded = base64.b64encode(_downscale(image_path)).decode()
+    with httpx.Client(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
         response = client.post(
             f"{OLLAMA_URL}/api/chat",
             json={
                 "model": VISION_MODEL,
-                "messages": [
-                    {"role": "system", "content": EXTRACT_SYSTEM},
-                    {
-                        "role": "user",
-                        "content": "Read this document and return its fields as JSON.",
-                        "images": [encoded],
-                    },
-                ],
+                "keep_alive": KEEP_ALIVE,
                 "stream": False,
-                "format": EXTRACT_SCHEMA,
                 "options": {"temperature": 0.0},
+                "messages": [{
+                    "role": "user",
+                    "content": (
+                        "Transcribe every line of text visible on this document, "
+                        "exactly as printed. Preserve the spelling exactly, even "
+                        "if a word looks misspelt. Do not summarise or correct."
+                    ),
+                    "images": [encoded],
+                }],
             },
         )
         response.raise_for_status()
-        return json.loads(response.json()["message"]["content"])
+        text = response.json()["message"]["content"]
+
+    # It wraps output in <doc>...</doc>.
+    return re.sub(r"</?doc>", " ", text).strip()
+
+
+def warm() -> None:
+    """
+    Load the vision model before the first upload.
+
+    Cold start is ~47s and warm inference ~3.5s. Someone standing at a desk
+    with a vendor should not pay the difference.
+    """
+    if not vision_available():
+        return
+    try:
+        with httpx.Client(timeout=httpx.Timeout(300.0)) as client:
+            client.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": VISION_MODEL, "keep_alive": KEEP_ALIVE, "stream": False,
+                    "messages": [{"role": "user", "content": "ok"}],
+                },
+            )
+    except Exception:
+        pass
 
 
 def _ocr_text(image_path: Path) -> str:
@@ -222,25 +299,29 @@ def _ocr_text(image_path: Path) -> str:
 
 
 def extract(image_path: str | Path, doc_type_hint: str | None = None) -> ExtractedDoc:
-    """Read one document. Falls back from vision to OCR rather than failing."""
+    """
+    Read one document: transcribe the pixels, then structure the text.
+
+    Vision is tried first and Docling OCR is the fallback. A failure in either
+    is recorded on the result rather than swallowed — a silent fallback meant we
+    ran the slow path for days without noticing the fast one was broken.
+    """
     path = Path(image_path)
+    text = ""
+    method = ""
+    note = ""
 
     if vision_available():
         try:
-            data = _extract_with_vision(path)
-            return ExtractedDoc(
-                doc_type=doc_type_hint or data.get("doc_type") or "unknown",
-                name=data.get("name"),
-                dob=data.get("dob"),
-                address=data.get("address"),
-                father_or_spouse=data.get("father_or_spouse"),
-                source_file=path.name,
-                extraction_method=VISION_MODEL,
-            )
-        except Exception:
-            pass  # fall through to OCR
+            text = _transcribe_with_vision(path)
+            method = VISION_MODEL
+        except Exception as exc:  # noqa: BLE001
+            note = f"vision failed ({type(exc).__name__}), used OCR"
 
-    text = _ocr_text(path)
+    if not text.strip():
+        text = _ocr_text(path)
+        method = f"{method or 'docling-ocr'} + docling-ocr" if method else "docling-ocr"
+
     data = chat_json(
         prompt=f"Fields from this document text:\n\n{text[:3000]}",
         schema=EXTRACT_SCHEMA,
@@ -254,7 +335,7 @@ def extract(image_path: str | Path, doc_type_hint: str | None = None) -> Extract
         father_or_spouse=data.get("father_or_spouse"),
         source_file=path.name,
         raw_text=text[:1000],
-        extraction_method="docling-ocr + granite",
+        extraction_method=f"{method} + granite" + (f" ({note})" if note else ""),
     )
 
 
@@ -329,9 +410,48 @@ def review(paths: list[tuple[str | Path, str | None]]) -> dict[str, Any]:
     """
     Full pass: read every document, compare, report.
 
+    Transcription and structuring are batched by model. Ollama evicts one model
+    to load another, so interleaving vision and text calls per document paid a
+    ~45s reload every time; doing all the reading first and all the structuring
+    second costs one swap instead of one per document.
+
     paths: [(image_path, doc_type_hint | None), ...]
     """
-    docs = [extract(p, hint) for p, hint in paths]
+    transcripts: list[tuple[Path, str | None, str, str]] = []
+
+    # Pass 1 — vision reads every document while it is resident.
+    for raw_path, hint in paths:
+        path = Path(raw_path)
+        text, method = "", ""
+        if vision_available():
+            try:
+                text = _transcribe_with_vision(path)
+                method = VISION_MODEL
+            except Exception as exc:  # noqa: BLE001
+                method = f"vision failed ({type(exc).__name__})"
+        if not text.strip():
+            text = _ocr_text(path)
+            method = "docling-ocr" if not method else f"{method}, fell back to docling-ocr"
+        transcripts.append((path, hint, text, method))
+
+    # Pass 2 — the text model structures all of them.
+    docs = []
+    for path, hint, text, method in transcripts:
+        data = chat_json(
+            prompt=f"Fields from this document text:\n\n{text[:3000]}",
+            schema=EXTRACT_SCHEMA,
+            system=EXTRACT_SYSTEM,
+        )
+        docs.append(ExtractedDoc(
+            doc_type=hint or data.get("doc_type") or "unknown",
+            name=data.get("name"),
+            dob=data.get("dob"),
+            address=data.get("address"),
+            father_or_spouse=data.get("father_or_spouse"),
+            source_file=path.name,
+            raw_text=text[:1000],
+            extraction_method=f"{method} + granite",
+        ))
     findings = check(docs)
     blockers = [f for f in findings if f.severity == "blocker"]
 
@@ -359,6 +479,10 @@ def review(paths: list[tuple[str | Path, str | None]]) -> dict[str, Any]:
             for f in findings
         ],
         "clear": not blockers,
+        # OCR mangles names in ways that matter here: it read "RAMESH H KUMAR"
+        # off a card printed "RAMESH KUMAR", and dropped another name entirely.
+        # A finding built on an OCR reading deserves a caveat.
+        "reading_is_reliable": all(VISION_MODEL in d.extraction_method for d in docs),
         "summary": (
             "No problems found — these documents are consistent."
             if not blockers

@@ -23,3 +23,4 @@ python-multipart==0.0.32
 # Here rather than a dev file: a fresh clone should be able to prove itself
 # green before demo day, and that is the only reason we install it.
 pytest==9.1.1
+pillow>=10.0

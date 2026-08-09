@@ -45,6 +45,7 @@ def _warm_models() -> None:
     """
     llm.warm()
     voice.warm()
+    doc_doctor.warm()   # 2.4GB vision model: ~47s cold, ~3.5s warm
 
 
 @app.get("/api/health")

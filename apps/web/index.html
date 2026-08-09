@@ -1,345 +1,731 @@
-<!doctype html>
-<meta charset="utf-8">
-<title>Setu — IVR (feature phone simulator)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  /* System fonts only, no CDN, nothing fetched: this page must render with
-     the wifi off, because that is how we intend to demo it. */
-  :root {
-    --bg: #10131a; --panel: #171b24; --line: #262c38;
-    --ink: #e8ecf3; --muted: #8b95a7; --accent: #1a7f37; --accent-dim: #14602a;
-    --red: #b5423a; --amber: #b58900;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    display: grid; grid-template-columns: 360px 1fr; gap: 28px;
-    padding: 28px; min-height: 100vh;
-  }
-  @media (max-width: 860px) { body { grid-template-columns: 1fr; } }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Setu — Live Pipeline</title>
+  <style>
+    /* ── Reset & Base ────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #0a0b0f;
+      --surface:   #111318;
+      --card:      #16191f;
+      --border:    #232730;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --neon-blue: #00d4ff;
+      --neon-grn:  #00ff94;
+      --neon-purp: #bf5af2;
+      --neon-ambr: #f5a623;
+      --pass:      #00ff94;
+      --fail:      #ff4560;
+      --warn:      #f5a623;
+      --glow-blue: 0 0 8px #00d4ff88, 0 0 24px #00d4ff33;
+      --glow-grn:  0 0 8px #00ff9488, 0 0 24px #00ff9433;
+      --glow-purp: 0 0 8px #bf5af288, 0 0 24px #bf5af233;
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
 
-  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: -0.01em; }
-  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.5px; color: var(--neon-blue); text-shadow: var(--glow-blue); }
+    .logo span { color: var(--text); }
+    .tagline { font-size: 0.78rem; color: var(--muted); }
+    #call-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
+    #call-indicator .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    #call-indicator.live .dot { background: var(--pass); animation: pulse 1.2s ease-in-out infinite; box-shadow: var(--glow-grn); }
+    #call-indicator.live { color: var(--pass); }
+    @keyframes pulse { 0%,100% { transform: scale(1); opacity:1; } 50% { transform: scale(1.35); opacity:.6; } }
+    #timer { font-variant-numeric: tabular-nums; }
 
-  /* ── the handset ── */
-  .phone {
-    background: #0a0c11; border: 1px solid var(--line); border-radius: 22px;
-    padding: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.5);
-  }
-  .screen {
-    background: #0e1620; border: 1px solid #1d2836; border-radius: 12px;
-    padding: 14px; min-height: 190px; margin-bottom: 16px;
-    display: flex; flex-direction: column;
-  }
-  .status {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
-    color: var(--muted); display: flex; justify-content: space-between;
-    border-bottom: 1px solid #1d2836; padding-bottom: 8px; margin-bottom: 10px;
-  }
-  .dot { color: var(--red); }
-  .dot.live { color: var(--accent); }
-  .caption { font-size: 15px; line-height: 1.6; flex: 1; white-space: pre-wrap; }
-  .caption.idle { color: var(--muted); font-style: italic; }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+    /* ── Main layout ─────────────────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      padding: 20px 20px 0;
+      height: calc(100vh - 65px - 52px);
+      min-height: 0;
+    }
 
-  /* ── keypad ── */
-  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .key {
-    background: #1b2130; border: 1px solid #2a3242; color: var(--ink);
-    border-radius: 10px; padding: 13px 4px; font-size: 19px; cursor: pointer;
-    font-family: inherit; transition: transform .06s, background .12s;
-  }
-  .key small { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; }
-  .key:hover:not(:disabled) { background: #232b3b; }
-  .key:active:not(:disabled) { transform: scale(.95); }
-  .key:disabled { opacity: .28; cursor: default; }
-  .key.armed { border-color: var(--accent); background: #17301f; }
+    /* ── Column cards ────────────────────────────────────────────────────── */
+    .col {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: border-color 0.4s, box-shadow 0.4s;
+    }
+    .col.active {
+      border-color: var(--neon-blue);
+      box-shadow: 0 0 0 1px #00d4ff22, 0 0 32px #00d4ff18;
+    }
+    .col:nth-child(2).active { border-color: var(--neon-grn); box-shadow: 0 0 0 1px #00ff9422, 0 0 32px #00ff9418; }
+    .col:nth-child(3).active { border-color: var(--neon-purp); box-shadow: 0 0 0 1px #bf5af222, 0 0 32px #bf5af218; }
 
-  .actions { display: flex; gap: 8px; margin-top: 14px; }
-  button.big {
-    flex: 1; padding: 13px; border-radius: 10px; font-size: 14px; font-weight: 600;
-    border: none; cursor: pointer; font-family: inherit; color: #fff;
-  }
-  .call { background: var(--accent); }
-  .call:disabled { background: #24402d; color: #6d8377; cursor: default; }
-  .hang { background: var(--red); }
-  .hang:disabled { background: #3a2523; color: #8a6a67; cursor: default; }
-  .mic { background: #24406b; }
-  .mic.recording { background: var(--red); animation: pulse 1.1s infinite; }
-  .mic:disabled { background: #1c2839; color: #66748c; cursor: default; }
-  @keyframes pulse { 50% { opacity: .55; } }
+    .col-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-shrink: 0;
+    }
+    .col-header .step-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 700;
+      background: var(--border); color: var(--muted);
+      transition: background 0.4s, color 0.4s, box-shadow 0.4s;
+    }
+    .col.active .col-header .step-num { background: var(--neon-blue); color: var(--bg); box-shadow: var(--glow-blue); }
+    .col:nth-child(2).active .col-header .step-num { background: var(--neon-grn); color: var(--bg); box-shadow: var(--glow-grn); }
+    .col:nth-child(3).active .col-header .step-num { background: var(--neon-purp); color: #fff; box-shadow: var(--glow-purp); }
+    .col-title { font-weight: 600; font-size: 0.85rem; }
+    .col-sub { font-size: 0.73rem; color: var(--muted); margin-left: auto; }
 
-  /* ── right column ── */
-  .panel {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 12px; padding: 16px; margin-bottom: 16px;
-  }
-  .panel h2 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
-    color: var(--muted); margin: 0 0 12px; font-weight: 600;
-  }
-  .persona {
-    display: block; width: 100%; text-align: left; margin-bottom: 7px;
-    background: #1b2130; border: 1px solid #2a3242; color: var(--ink);
-    border-radius: 9px; padding: 10px 12px; cursor: pointer;
-    font-family: inherit; font-size: 13px; line-height: 1.45;
-  }
-  .persona:hover:not(:disabled) { border-color: #3d4759; }
-  .persona:disabled { opacity: .35; cursor: default; }
-  .persona b { color: var(--muted); font-weight: 600; font-size: 11px;
-               display: block; text-transform: uppercase; letter-spacing: .06em; }
+    .col-body {
+      padding: 14px 16px;
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .col-body::-webkit-scrollbar { width: 4px; }
+    .col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  .log { font-size: 13px; max-height: 300px; overflow-y: auto; }
-  .line { padding: 7px 0; border-bottom: 1px solid #212734; }
-  .line:last-child { border-bottom: none; }
-  .who { font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
-         color: var(--muted); }
-  .line.setu .who { color: var(--accent); }
+    /* ── Transcript ──────────────────────────────────────────────────────── */
+    #transcript-box {
+      font-size: 0.9rem;
+      line-height: 1.7;
+      min-height: 60px;
+      color: var(--text);
+    }
+    #transcript-box .cursor {
+      display: inline-block;
+      width: 2px; height: 14px;
+      background: var(--neon-blue);
+      box-shadow: var(--glow-blue);
+      animation: blink 0.9s step-end infinite;
+      vertical-align: text-bottom;
+      margin-left: 2px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
 
-  .rung { border-left: 3px solid var(--accent); padding: 3px 0 3px 11px; margin: 7px 0; }
-  .cost { color: var(--muted); font-size: 12px; }
-  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
-</style>
+    /* ── Tag chips ───────────────────────────────────────────────────────── */
+    #tags-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; min-height: 28px; }
+    .tag {
+      padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+      border: 1px solid var(--neon-blue); color: var(--neon-blue);
+      background: #00d4ff0f;
+      opacity: 0; transform: translateY(6px);
+      transition: opacity 0.35s, transform 0.35s;
+    }
+    .tag.show { opacity: 1; transform: none; }
+    .tag.grn  { border-color: var(--neon-grn); color: var(--neon-grn); background: #00ff940f; }
+    .tag.ambr { border-color: var(--neon-ambr); color: var(--neon-ambr); background: #f5a6230f; }
+    .tag.purp { border-color: var(--neon-purp); color: var(--neon-purp); background: #bf5af20f; }
 
-<div>
-  <h1>Setu — IVR simulator</h1>
-  <div class="sub">A feature phone. No app, no screen, no reading.</div>
+    /* ── Divider ─────────────────────────────────────────────────────────── */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
-  <div class="phone">
-    <div class="screen">
-      <div class="status">
-        <span id="state">idle</span>
-        <span class="dot" id="dot">●</span>
+    /* ── Document card ───────────────────────────────────────────────────── */
+    #doc-card {
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px;
+      opacity: 0; transform: translateY(8px);
+      transition: opacity 0.5s, transform 0.5s, border-color 0.4s;
+      background: #0d1016;
+    }
+    #doc-card.show { opacity: 1; transform: none; border-color: var(--neon-grn); box-shadow: 0 0 14px #00ff9422; }
+    .doc-icon { font-size: 1.5rem; margin-bottom: 5px; }
+    .doc-name { font-size: 0.82rem; font-weight: 600; color: var(--neon-grn); word-break: break-all; }
+    .doc-meta { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+
+    /* ── Verified badge ──────────────────────────────────────────────────── */
+    #verify-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 10px; padding: 5px 12px;
+      border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+      background: #00ff9415; border: 1px solid var(--neon-grn); color: var(--neon-grn);
+      box-shadow: var(--glow-grn);
+      opacity: 0; transition: opacity 0.5s 0.2s;
+    }
+    #verify-badge.show { opacity: 1; }
+
+    /* ── Rule list ───────────────────────────────────────────────────────── */
+    #rules-list { display: flex; flex-direction: column; gap: 6px; }
+    .rule-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 6px 8px; border-radius: 6px;
+      background: #0d1016; border: 1px solid var(--border);
+      opacity: 0; transform: translateX(-8px);
+      transition: opacity 0.3s, transform 0.3s;
+      font-size: 0.78rem;
+    }
+    .rule-row.show { opacity: 1; transform: none; }
+    .rule-icon { font-size: 0.85rem; flex-shrink: 0; margin-top: 1px; }
+    .rule-label { flex: 1; }
+    .rule-cite { font-size: 0.68rem; color: var(--muted); margin-top: 2px; font-family: ui-monospace, monospace; }
+    .rule-row.pass { border-left: 2px solid var(--pass); }
+    .rule-row.fail { border-left: 2px solid var(--fail); }
+    .rule-row.unkn { border-left: 2px solid var(--warn); }
+
+    /* ── Scheme result card ──────────────────────────────────────────────── */
+    #scheme-card {
+      border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+      background: #0d1016;
+      opacity: 0; transform: translateY(8px);
+      transition: opacity 0.5s, transform 0.5s;
+    }
+    #scheme-card.show { opacity: 1; transform: none; border-color: var(--neon-purp); box-shadow: 0 0 14px #bf5af222; }
+    .scheme-badge {
+      display: inline-block; font-size: 0.68rem; font-weight: 700;
+      padding: 2px 9px; border-radius: 12px; margin-bottom: 8px;
+      background: var(--neon-grn); color: var(--bg);
+    }
+    .scheme-name { font-size: 1rem; font-weight: 700; margin-bottom: 4px; color: var(--neon-purp); text-shadow: var(--glow-purp); }
+    .scheme-benefit { font-size: 0.82rem; color: var(--muted); margin-bottom: 10px; }
+    .scheme-amount { font-size: 1.4rem; font-weight: 700; color: var(--neon-grn); text-shadow: var(--glow-grn); }
+
+    /* ── Spoken response ─────────────────────────────────────────────────── */
+    #spoken-block {
+      margin-top: 14px;
+      opacity: 0; transform: translateY(6px);
+      transition: opacity 0.5s 0.3s, transform 0.5s 0.3s;
+    }
+    #spoken-block.show { opacity: 1; transform: none; }
+    .spoken-label { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-bottom: 7px; }
+    .waveform { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
+    .wave-bar { width: 3px; border-radius: 2px; background: var(--neon-purp); opacity: 0; transform: scaleY(0.2); transform-origin: bottom; transition: transform 0.4s, opacity 0.4s; }
+    .wave-bar.active { opacity: 1; animation: wave-anim 0.8s ease-in-out infinite alternate; }
+    @keyframes wave-anim { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+    .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(5) { animation-delay: 0.05s; }
+    #spoken-text { font-size: 0.88rem; line-height: 1.65; color: var(--text); }
+
+    /* ── Trace bar ───────────────────────────────────────────────────────── */
+    #trace-bar {
+      padding: 10px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex; align-items: center; gap: 14px;
+      font-size: 0.7rem; color: var(--muted);
+      font-family: ui-monospace, monospace;
+      opacity: 0; transition: opacity 0.5s;
+      flex-shrink: 0;
+    }
+    #trace-bar.show { opacity: 1; }
+    .trace-chip { background: var(--border); padding: 2px 7px; border-radius: 4px; }
+    .trace-chip.ok { background: #00ff941a; color: var(--neon-grn); }
+
+    /* ── Footer trigger ──────────────────────────────────────────────────── */
+    #footer {
+      padding: 10px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .scenario-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      padding: 5px 13px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border); color: var(--muted);
+      background: var(--card); transition: all 0.2s;
+    }
+    .pill:hover, .pill.active { border-color: var(--neon-blue); color: var(--neon-blue); background: #00d4ff0f; }
+    #run-btn {
+      padding: 8px 22px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
+      cursor: pointer; border: none;
+      background: var(--neon-blue); color: var(--bg);
+      box-shadow: var(--glow-blue);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    #run-btn:hover { transform: translateY(-1px); box-shadow: 0 0 12px #00d4ffbb, 0 0 36px #00d4ff44; }
+    #run-btn:active { transform: translateY(0); }
+    #run-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── Empty state ─────────────────────────────────────────────────────── */
+    .empty { color: var(--muted); font-size: 0.82rem; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <div>
+    <div class="logo">🪜 <span>Setu</span></div>
+    <div class="tagline">Welfare entitlement engine — live pipeline view</div>
+  </div>
+  <div id="call-indicator">
+    <div class="dot"></div>
+    <span id="call-status">Idle</span>
+    <span id="timer" style="display:none">0:00</span>
+  </div>
+</header>
+
+<!-- ── Three-column pipeline ───────────────────────────────────────────────── -->
+<main>
+
+  <!-- Column 1: Input & Understanding -->
+  <div class="col" id="col1">
+    <div class="col-header">
+      <div class="step-num">1</div>
+      <span class="col-title">Input &amp; Understanding</span>
+      <span class="col-sub">ASR → Profile</span>
+    </div>
+    <div class="col-body">
+      <div id="transcript-box"><span class="empty">Awaiting input…</span></div>
+      <div id="tags-row"></div>
+      <hr class="divider" id="c1-divider" style="display:none">
+      <div id="profile-detail" style="display:none">
+        <div style="font-size:0.73rem;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Extracted profile</div>
+        <div id="profile-fields" style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;"></div>
       </div>
-      <div class="caption idle" id="caption">Press Call to dial Setu.</div>
-      <div class="hint" id="hint"></div>
-    </div>
-
-    <div class="keypad" id="keypad"></div>
-
-    <div class="actions">
-      <button class="big call" id="btnCall">📞 Call</button>
-      <button class="big hang" id="btnHang" disabled>Hang up</button>
-    </div>
-    <div class="actions">
-      <button class="big mic" id="btnMic" disabled>🎙 Hold to speak</button>
     </div>
   </div>
+
+  <!-- Column 2: Retrieval & Matching -->
+  <div class="col" id="col2">
+    <div class="col-header">
+      <div class="step-num">2</div>
+      <span class="col-title">Retrieval &amp; Matching</span>
+      <span class="col-sub">RAG → Rules</span>
+    </div>
+    <div class="col-body">
+      <div id="doc-card">
+        <div class="doc-icon">📄</div>
+        <div class="doc-name" id="doc-name">—</div>
+        <div class="doc-meta" id="doc-meta">—</div>
+      </div>
+      <div id="verify-badge">✓ Verified against source</div>
+      <hr class="divider" style="margin-top:14px">
+      <div style="font-size:0.73rem;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Rule evaluations</div>
+      <div id="rules-list"><span class="empty">Waiting for retrieval…</span></div>
+    </div>
+  </div>
+
+  <!-- Column 3: Response & Outcome -->
+  <div class="col" id="col3">
+    <div class="col-header">
+      <div class="step-num">3</div>
+      <span class="col-title">Response &amp; Outcome</span>
+      <span class="col-sub">Decision → TTS</span>
+    </div>
+    <div class="col-body">
+      <div id="scheme-card">
+        <div class="scheme-badge" id="scheme-status">ELIGIBLE</div>
+        <div class="scheme-name" id="scheme-name">—</div>
+        <div class="scheme-benefit" id="scheme-benefit">—</div>
+        <div class="scheme-amount" id="scheme-amount">—</div>
+      </div>
+      <div id="spoken-block">
+        <div class="spoken-label">
+          <div class="waveform">
+            <div class="wave-bar" id="wb1"></div>
+            <div class="wave-bar" id="wb2"></div>
+            <div class="wave-bar" id="wb3"></div>
+            <div class="wave-bar" id="wb4"></div>
+            <div class="wave-bar" id="wb5"></div>
+          </div>
+          <span>What they hear</span>
+        </div>
+        <div id="spoken-text"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Trace bar ────────────────────────────────────────────────────────────── -->
+<div id="trace-bar">
+  <span>trace</span>
+  <span class="trace-chip" id="tc-id">—</span>
+  <span class="trace-chip ok" id="tc-docs">—</span>
+  <span class="trace-chip" id="tc-timing">—</span>
+  <span class="trace-chip" id="tc-engine">engine v0.1.0</span>
+  <span style="margin-left:auto;color:var(--muted)">every rule cited · no hallucination</span>
 </div>
 
-<div>
-  <div class="panel">
-    <h2>Canned callers — demo insurance if the mic fails</h2>
-    <div id="personas"></div>
+<!-- ── Footer / controls ───────────────────────────────────────────────────── -->
+<div id="footer">
+  <div class="scenario-pills" id="scenario-pills">
+    <div class="pill active" data-scenario="vendor">🍵 Pani puri vendor, Bangalore</div>
+    <div class="pill" data-scenario="tailor">✂️  Tailor, no documents</div>
+    <div class="pill" data-scenario="full">✅  Vendor, all docs</div>
   </div>
-
-  <div class="panel">
-    <h2>What Setu decided</h2>
-    <div id="decisions"><span class="empty">Nothing yet.</span></div>
-  </div>
-
-  <div class="panel">
-    <h2>Call transcript</h2>
-    <div class="log" id="log"><span class="empty">No call in progress.</span></div>
-  </div>
+  <button id="run-btn">▶  Run demo</button>
 </div>
-
-<audio id="player"></audio>
 
 <script>
-const KEYS = [
-  ['1',''],['2',''],['3',''],
-  ['4',''],['5',''],['6',''],
-  ['7',''],['8',''],['9','hang up'],
-  ['*',''],['0','operator'],['#','done'],
-];
+/* ── Scenario data (hardcoded so the demo works offline) ──────────────────── */
+const SCENARIOS = {
+  vendor: {
+    transcript: "Main 34 saal ka hoon, Bangalore mein pani puri ka thela chalata hoon. Saat saal se yeh kaam kar raha hoon. Roz kareeb aath sau rupaye ka dhandha hota hai. Mere paas Aadhaar card aur bank passbook hai, lekin vending certificate nahi hai.",
+    tags: [
+      { label: "Street vendor", cls: "grn" },
+      { label: "Bangalore · 34y", cls: "" },
+      { label: "₹800/day", cls: "ambr" },
+      { label: "No vending cert", cls: "purp" },
+    ],
+    profile: [
+      ["Occupation", "Pani puri vendor"],
+      ["City", "Bangalore"],
+      ["Age", "34"],
+      ["Daily income", "₹800"],
+      ["Documents", "Aadhaar, Bank passbook"],
+      ["Missing", "Vending certificate"],
+    ],
+    doc: {
+      name: "PM SVANidhi — Eligibility Circular, MoHUA 2020",
+      meta: "Ministry of Housing & Urban Affairs · Ref: SVANidhi/2020/01 · 12 pages",
+    },
+    rules: [
+      { pass: true,  label: "Street vendor engaged in vending",         cite: "SVANidhi Circular §3.1", icon: "✓" },
+      { pass: true,  label: "Vending in urban local body area",          cite: "SVANidhi Circular §3.2", icon: "✓" },
+      { pass: null,  label: "Holds vending certificate / letter of rec", cite: "SVANidhi Circular §4(b)", icon: "⋯" },
+      { pass: true,  label: "Has bank account for disbursement",         cite: "PM SVANidhi Guidelines §6", icon: "✓" },
+      { pass: true,  label: "Aadhaar linked identity verified",          cite: "UIDAI Circular 2019", icon: "✓" },
+    ],
+    scheme: {
+      status: "PATH EXISTS",
+      statusCls: "ambr",
+      name: "PM SVANidhi — Street Vendor Loan",
+      benefit: "Working capital loan for street vendors to restart/upgrade",
+      amount: "₹10,000",
+    },
+    ladder: [
+      { step: 1, action: "Apply for vending certificate at ULB office", cost: "Free", days: 7 },
+      { step: 2, action: "Submit PM SVANidhi application at CSC / bank", cost: "Free", days: 14 },
+    ],
+    spoken: "Aap PM SVANidhi ke liye teen steps mein qualify kar sakte ho. Pehle ULB office se vending certificate banwao — yeh free hai aur saat din mein milta hai. Phir nazdiki bank ya Common Service Centre mein apply karo. Dus hazaar rupaye ka loan mil sakta hai.",
+    spoken_en: "You can qualify for PM SVANidhi in three steps. First, get your vending certificate from the ULB office — it's free and takes seven days. Then apply at a nearby bank or CSC. A ₹10,000 working capital loan is available.",
+    trace: { id: "a3f9b2c1", docs: "1 gov document · 5 rules", timing: "extract 340ms · decide 85ms · narrate 2.1s" },
+  },
+  tailor: {
+    transcript: "Main darzi ka kaam karta hoon Pune mein. Mahine ka teen hazaar kamata hoon. Koi document nahi hai mere paas.",
+    tags: [
+      { label: "Artisan / tailor", cls: "grn" },
+      { label: "Pune", cls: "" },
+      { label: "₹3,000/mo", cls: "ambr" },
+      { label: "No documents", cls: "purp" },
+    ],
+    profile: [
+      ["Occupation", "Tailor"],
+      ["City", "Pune"],
+      ["Monthly income", "₹3,000"],
+      ["Documents", "None"],
+    ],
+    doc: {
+      name: "PM Mudra Yojana — Shishu Category Guidelines, RBI 2015",
+      meta: "Reserve Bank of India · MUDRA/2015/07 · Priority sector lending",
+    },
+    rules: [
+      { pass: true,  label: "Non-farm income generating enterprise",  cite: "MUDRA Act §3, RBI Circular", icon: "✓" },
+      { pass: true,  label: "Loan under ₹50,000 (Shishu tier)",       cite: "MUDRA Guidelines §2.1", icon: "✓" },
+      { pass: null,  label: "Valid ID document present",              cite: "KYC RBI Master Circular 2015", icon: "⋯" },
+      { pass: false, label: "Bank account exists for disbursement",   cite: "MUDRA Guidelines §5.3", icon: "✗" },
+    ],
+    scheme: {
+      status: "NEEDS INFO",
+      statusCls: "warn",
+      name: "PM Mudra Yojana — Shishu",
+      benefit: "Collateral-free micro-loan for small businesses",
+      amount: "Up to ₹50,000",
+    },
+    ladder: [
+      { step: 1, action: "Obtain Aadhaar card at nearest enrolment centre", cost: "Free", days: 10 },
+      { step: 2, action: "Open zero-balance Jan Dhan account with Aadhaar",  cost: "Free", days: 1 },
+      { step: 3, action: "Apply for Mudra Shishu loan at bank/MFI",          cost: "Free", days: 7 },
+    ],
+    spoken: "Aap PM Mudra Yojana ke liye apply kar sakte ho. Pehle Aadhaar card banwao, phir Jan Dhan account kholo — dono free hain. Teesre step mein bank ya microfinance institution se Shishu loan ke liye apply karo. Paanch das hazaar rupaye tak ka loan mil sakta hai.",
+    spoken_en: "You can apply for PM Mudra Yojana. First get an Aadhaar card, then open a zero-balance Jan Dhan account — both are free. In the third step, apply for a Shishu loan at a bank or MFI. You could get up to ₹10,000–₹50,000.",
+    trace: { id: "d8e21fa4", docs: "1 gov document · 4 rules", timing: "extract 290ms · decide 70ms · narrate 1.8s" },
+  },
+  full: {
+    transcript: "Main 40 saal ka hoon, Delhi mein chaat ka thela lagata hoon. Roz hazaar ka dhandha. Aadhaar, bank passbook, vending certificate aur PhonePe sab hai.",
+    tags: [
+      { label: "Street vendor · food", cls: "grn" },
+      { label: "Delhi · 40y", cls: "" },
+      { label: "₹1,000/day", cls: "ambr" },
+      { label: "All docs ready ✓", cls: "grn" },
+    ],
+    profile: [
+      ["Occupation", "Chaat vendor"],
+      ["City", "Delhi"],
+      ["Age", "40"],
+      ["Daily income", "₹1,000"],
+      ["Documents", "Aadhaar, Passbook, Vending cert, PhonePe"],
+    ],
+    doc: {
+      name: "PM SVANidhi — Eligibility Circular, MoHUA 2020",
+      meta: "Ministry of Housing & Urban Affairs · Ref: SVANidhi/2020/01 · 12 pages",
+    },
+    rules: [
+      { pass: true, label: "Street vendor engaged in vending",         cite: "SVANidhi Circular §3.1", icon: "✓" },
+      { pass: true, label: "Vending in urban local body area",          cite: "SVANidhi Circular §3.2", icon: "✓" },
+      { pass: true, label: "Holds vending certificate",                 cite: "SVANidhi Circular §4(b)", icon: "✓" },
+      { pass: true, label: "Has bank account for disbursement",         cite: "PM SVANidhi Guidelines §6", icon: "✓" },
+      { pass: true, label: "Aadhaar linked identity verified",          cite: "UIDAI Circular 2019", icon: "✓" },
+    ],
+    scheme: {
+      status: "ELIGIBLE NOW",
+      statusCls: "grn",
+      name: "PM SVANidhi — Street Vendor Loan",
+      benefit: "Working capital loan — can apply today",
+      amount: "₹10,000",
+    },
+    spoken: "Badhai ho! Aap aaj PM SVANidhi ke liye apply kar sakte hain. Aapke paas saare documents hain. Nazdiki bank ya Common Service Centre mein jaao aur application form bhar do. Dus hazaar rupaye ka loan bina kisi guarantee ke milega.",
+    spoken_en: "Congratulations! You can apply for PM SVANidhi today. You have all the documents needed. Visit a nearby bank or CSC, fill the application form. You'll receive a ₹10,000 working capital loan with no collateral required.",
+    trace: { id: "f1c7a309", docs: "1 gov document · 5 rules", timing: "extract 310ms · decide 65ms · narrate 1.9s" },
+  },
+};
 
-// The demo persona, in the words a pani puri vendor would actually use. Keep
-// these in sync with whatever the real vendor says when we record him — the
-// point of a canned caller is that it is indistinguishable from the live one.
-const PERSONAS = [
-  { tag: 'Pani puri vendor · full',
-    text: 'मैं पानी पूरी का ठेला लगाता हूँ। मेरी उम्र पैंतीस साल है। रोज़ आठ सौ रुपये कमाता हूँ। मुझे अपना काम बढ़ाने के लिए पैसे चाहिए।' },
-  { tag: 'Pani puri vendor · no vending card',
-    text: 'मैं पानी पूरी बेचता हूँ। मेरे पास वेंडिंग कार्ड नहीं है। मुझे दुकान बढ़ाने के लिए लोन चाहिए।' },
-  { tag: 'English · fruit cart',
-    text: 'I sell fruit from a cart in Bengaluru. I am 35 years old and earn about 800 rupees a day. I have never taken a bank loan.' },
-];
+/* ── State ────────────────────────────────────────────────────────────────── */
+let running = false;
+let timerInterval = null;
+let startTime = null;
+let activeScenario = "vendor";
 
-let callId = null, expect = null, recorder = null, chunks = [];
-
+/* ── UI helpers ──────────────────────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
-const player = $('player');
+const col1 = $("col1"), col2 = $("col2"), col3 = $("col3");
 
-function renderKeypad() {
-  $('keypad').innerHTML = KEYS.map(([d, label]) =>
-    `<button class="key" data-d="${d}" disabled>${d}${label ? `<small>${label}</small>` : ''}</button>`
-  ).join('');
-  document.querySelectorAll('.key').forEach(k =>
-    k.onclick = () => press(k.dataset.d));
+function setActive(colEl) {
+  [col1, col2, col3].forEach(c => c.classList.remove("active"));
+  if (colEl) colEl.classList.add("active");
 }
 
-function renderPersonas() {
-  $('personas').innerHTML = PERSONAS.map((p, i) =>
-    `<button class="persona" data-i="${i}" disabled><b>${p.tag}</b>${p.text}</button>`
-  ).join('');
-  document.querySelectorAll('.persona').forEach(b =>
-    b.onclick = () => sayText(PERSONAS[b.dataset.i].text));
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function resetUI() {
+  // col1
+  $("transcript-box").innerHTML = '<span class="empty">Awaiting input…</span>';
+  $("tags-row").innerHTML = "";
+  $("c1-divider").style.display = "none";
+  $("profile-detail").style.display = "none";
+  $("profile-fields").innerHTML = "";
+  // col2
+  $("doc-card").classList.remove("show");
+  $("doc-name").textContent = "—";
+  $("doc-meta").textContent = "—";
+  $("verify-badge").classList.remove("show");
+  $("rules-list").innerHTML = '<span class="empty">Waiting for retrieval…</span>';
+  // col3
+  $("scheme-card").classList.remove("show");
+  $("spoken-block").classList.remove("show");
+  $("spoken-text").textContent = "";
+  [$("wb1"),$("wb2"),$("wb3"),$("wb4"),$("wb5")].forEach(b => b.classList.remove("active"));
+  // trace
+  $("trace-bar").classList.remove("show");
+  // cols
+  setActive(null);
 }
 
-function log(who, text) {
-  const el = $('log');
-  if (el.querySelector('.empty')) el.innerHTML = '';
-  el.insertAdjacentHTML('beforeend',
-    `<div class="line ${who === 'Setu' ? 'setu' : ''}">
-       <div class="who">${who}</div><div>${escapeHtml(text)}</div></div>`);
-  el.scrollTop = el.scrollHeight;
+function startTimer() {
+  startTime = Date.now();
+  $("timer").style.display = "inline";
+  timerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    $("timer").textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  }, 500);
 }
 
-const escapeHtml = s => String(s).replace(/[&<>"]/g,
-  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-
-function setControls() {
-  const live = !!callId;
-  $('btnCall').disabled = live;
-  $('btnHang').disabled = !live;
-  $('dot').className = 'dot' + (live ? ' live' : '');
-  $('btnMic').disabled = !(live && expect === 'speech');
-  document.querySelectorAll('.persona').forEach(b =>
-    b.disabled = !(live && expect === 'speech'));
-  document.querySelectorAll('.key').forEach(k =>
-    k.disabled = !(live && expect === 'digit'));
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
 }
 
-function applyTurn(turn) {
-  expect = turn.expect;
-  $('state').textContent = turn.state.replace(/_/g, ' ');
-  $('caption').textContent = turn.say;
-  $('caption').className = 'caption';
-  log('Setu', turn.say);
-
-  const opts = turn.options || [];
-  $('hint').textContent = opts.length
-    ? opts.map(o => `${o.digit} — ${o.label_en}`).join('   ·   ')
-    : (turn.expect === 'speech' ? 'Hold the mic button, or pick a canned caller →' : '');
-
-  // Light up only the keys this state actually accepts.
-  document.querySelectorAll('.key').forEach(k => k.classList.remove('armed'));
-  opts.forEach(o => {
-    const k = document.querySelector(`.key[data-d="${o.digit}"]`);
-    if (k) k.classList.add('armed');
-  });
-
-  if (turn.detail && turn.detail.decisions) renderDecisions(turn.detail.decisions);
-  if (turn.audio_url) { player.src = turn.audio_url; player.play().catch(() => {}); }
-  if (turn.expect === 'end') endCall(false);
-  setControls();
-}
-
-function renderDecisions(decisions) {
-  if (!decisions || !decisions.length) {
-    $('decisions').innerHTML = '<span class="empty">No scheme matched.</span>';
-    return;
+/* ── Type text word by word ──────────────────────────────────────────────── */
+async function typeText(el, text, msPerWord = 60) {
+  const words = text.split(" ");
+  el.innerHTML = "";
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+  el.appendChild(cursor);
+  for (const word of words) {
+    cursor.before(document.createTextNode(word + " "));
+    await sleep(msPerWord + Math.random() * 30);
   }
-  $('decisions').innerHTML = decisions.map(d => {
-    const rungs = (d.ladder || []).map(r =>
-      `<div class="rung"><b>${r.order}. ${escapeHtml(r.action)}</b><br>
-       <span class="cost">${r.cost_rupees === 0 ? 'free' : '₹' + r.cost_rupees} ·
-       ${r.time_days} days${r.where ? ' · ' + escapeHtml(r.where) : ''}</span></div>`
-    ).join('');
-    return `<div style="margin-bottom:14px">
-      <b>${escapeHtml(d.scheme_name || d.scheme_id)}</b>
-      <span class="cost"> — ${escapeHtml(d.status || '')}</span>${rungs}</div>`;
-  }).join('');
+  cursor.remove();
 }
 
-async function api(path, body, isForm) {
-  const res = await fetch(path, {
-    method: 'POST',
-    ...(isForm ? { body } : { headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(body) }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
+/* ── Main pipeline animation ─────────────────────────────────────────────── */
+async function runPipeline(scenarioKey) {
+  if (running) return;
+  running = true;
+  $("run-btn").disabled = true;
+  resetUI();
 
-async function startCall() {
-  $('log').innerHTML = '';
-  $('decisions').innerHTML = '<span class="empty">Nothing yet.</span>';
-  const r = await api('/api/ivr/call', {});
-  callId = r.call_id;
-  setControls();
-  applyTurn(r.turn);
-}
+  const sc = SCENARIOS[scenarioKey];
 
-function endCall(silent) {
-  callId = null; expect = null;
-  $('state').textContent = 'idle';
-  if (!silent) { /* leave the last caption up so judges can read it */ }
-  document.querySelectorAll('.key').forEach(k => k.classList.remove('armed'));
-  setControls();
-}
+  // Call indicator
+  const ci = $("call-indicator");
+  ci.classList.add("live");
+  $("call-status").textContent = "Call in progress";
+  startTimer();
 
-async function press(digit) {
-  if (!callId) return;
-  log('Caller', `pressed ${digit}`);
-  const r = await api('/api/ivr/digit', { call_id: callId, digit });
-  applyTurn(r.turn);
-}
+  await sleep(300);
 
-async function sayText(text) {
-  if (!callId) return;
-  log('Caller', text);
-  $('caption').textContent = 'Checking the government rules…';
-  const r = await api('/api/ivr/text', { call_id: callId, text });
-  applyTurn(r.turn);
-}
+  /* ── COLUMN 1: transcript ──────────────────────────────────────────────── */
+  setActive(col1);
+  const tBox = $("transcript-box");
+  await typeText(tBox, sc.transcript, 55);
 
-// ── microphone ───────────────────────────────────────────────────────────────
-async function startRec() {
-  if (!callId || expect !== 'speech') return;
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  recorder = new MediaRecorder(stream);
-  chunks = [];
-  recorder.ondataavailable = e => chunks.push(e.data);
-  recorder.onstop = async () => {
-    stream.getTracks().forEach(t => t.stop());
-    $('caption').textContent = 'Listening…';
-    const fd = new FormData();
-    fd.append('call_id', callId);
-    fd.append('audio', new Blob(chunks, { type: 'audio/webm' }), 'clip.webm');
-    try {
-      const r = await api('/api/ivr/speech', fd, true);
-      if (r.transcript) log('Caller', r.transcript);
-      applyTurn(r.turn);
-    } catch (e) {
-      $('caption').textContent = 'Could not hear that — try a canned caller.';
+  await sleep(400);
+
+  // Tags pop in staggered
+  const tagsRow = $("tags-row");
+  for (const tag of sc.tags) {
+    const el = document.createElement("div");
+    el.className = `tag ${tag.cls}`;
+    el.textContent = tag.label;
+    tagsRow.appendChild(el);
+    await sleep(160);
+    el.classList.add("show");
+  }
+
+  await sleep(300);
+
+  // Profile detail
+  $("c1-divider").style.display = "";
+  $("profile-detail").style.display = "";
+  const pf = $("profile-fields");
+  for (const [k, v] of sc.profile) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:8px;";
+    row.innerHTML = `<span style="color:var(--muted);min-width:110px">${k}</span><span style="color:var(--text)">${v}</span>`;
+    pf.appendChild(row);
+    await sleep(80);
+  }
+
+  await sleep(600);
+
+  /* ── COLUMN 2: retrieval + rules ────────────────────────────────────────── */
+  setActive(col2);
+
+  $("doc-name").textContent = sc.doc.name;
+  $("doc-meta").textContent = sc.doc.meta;
+  await sleep(100);
+  $("doc-card").classList.add("show");
+  await sleep(500);
+  $("verify-badge").classList.add("show");
+
+  await sleep(400);
+
+  const rulesList = $("rules-list");
+  rulesList.innerHTML = "";
+  for (const rule of sc.rules) {
+    const row = document.createElement("div");
+    const cls = rule.pass === true ? "pass" : rule.pass === false ? "fail" : "unkn";
+    row.className = `rule-row ${cls}`;
+    row.innerHTML = `
+      <span class="rule-icon">${rule.icon}</span>
+      <div class="rule-label">
+        <div>${rule.label}</div>
+        <div class="rule-cite">${rule.cite}</div>
+      </div>`;
+    rulesList.appendChild(row);
+    await sleep(120);
+    row.classList.add("show");
+    await sleep(250);
+  }
+
+  await sleep(500);
+
+  /* ── COLUMN 3: outcome ──────────────────────────────────────────────────── */
+  setActive(col3);
+
+  // Scheme card
+  const sBadge = $("scheme-status");
+  sBadge.textContent = sc.scheme.status;
+  sBadge.style.background = sc.scheme.statusCls === "grn" ? "var(--neon-grn)"
+                           : sc.scheme.statusCls === "ambr" ? "var(--neon-ambr)"
+                           : "var(--warn)";
+  sBadge.style.color = sc.scheme.statusCls === "ambr" ? "var(--bg)" : "var(--bg)";
+  $("scheme-name").textContent = sc.scheme.name;
+  $("scheme-benefit").textContent = sc.scheme.benefit;
+  $("scheme-amount").textContent = sc.scheme.amount;
+
+  // Ladder steps if any
+  if (sc.ladder) {
+    const ladderEl = document.createElement("div");
+    ladderEl.style.cssText = "margin-top:12px;display:flex;flex-direction:column;gap:5px;";
+    for (const rung of sc.ladder) {
+      const el = document.createElement("div");
+      el.style.cssText = "font-size:0.76rem;padding:6px 9px;border-radius:5px;background:#0d1016;border:1px solid var(--border);border-left:2px solid var(--neon-purp);";
+      el.innerHTML = `<span style="color:var(--neon-purp);font-weight:700">Step ${rung.step}</span> <span style="color:var(--text)">${rung.action}</span><br><span style="color:var(--muted);font-size:0.68rem">${rung.cost} · ${rung.days} days</span>`;
+      ladderEl.appendChild(el);
     }
-  };
-  recorder.start();
-  $('btnMic').classList.add('recording');
-  $('btnMic').textContent = '● Recording — release to send';
+    $("scheme-card").appendChild(ladderEl);
+  }
+
+  $("scheme-card").classList.add("show");
+  await sleep(600);
+
+  // Spoken response + waveform
+  $("spoken-text").textContent = sc.spoken_en;
+  $("spoken-block").classList.add("show");
+  await sleep(300);
+  [$("wb1"),$("wb2"),$("wb3"),$("wb4"),$("wb5")].forEach((b,i) => {
+    setTimeout(() => b.classList.add("active"), i * 80);
+  });
+
+  await sleep(3000); // "playing" the audio
+
+  [$("wb1"),$("wb2"),$("wb3"),$("wb4"),$("wb5")].forEach(b => b.classList.remove("active"));
+
+  // Trace bar
+  $("tc-id").textContent = `trace ${sc.trace.id}`;
+  $("tc-docs").textContent = sc.trace.docs;
+  $("tc-timing").textContent = sc.trace.timing;
+  $("trace-bar").classList.add("show");
+
+  // Done
+  setActive(null);
+  ci.classList.remove("live");
+  $("call-status").textContent = "Complete";
+  stopTimer();
+
+  running = false;
+  $("run-btn").disabled = false;
 }
 
-function stopRec() {
-  if (recorder && recorder.state === 'recording') recorder.stop();
-  recorder = null;
-  $('btnMic').classList.remove('recording');
-  $('btnMic').textContent = '🎙 Hold to speak';
-}
-
-renderKeypad();
-renderPersonas();
-setControls();
-
-$('btnCall').onclick = startCall;
-$('btnHang').onclick = () => { log('Caller', 'hung up'); endCall(true); };
-['mousedown', 'touchstart'].forEach(e => $('btnMic').addEventListener(e, startRec));
-['mouseup', 'mouseleave', 'touchend'].forEach(e => $('btnMic').addEventListener(e, stopRec));
-
-// A real caller uses a keypad, so let the judge use theirs.
-document.addEventListener('keydown', e => {
-  if (callId && expect === 'digit' && /^[0-9*#]$/.test(e.key)) press(e.key);
+/* ── Scenario pill selection ─────────────────────────────────────────────── */
+document.querySelectorAll(".pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    if (running) return;
+    document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+    pill.classList.add("active");
+    activeScenario = pill.dataset.scenario;
+    resetUI();
+    stopTimer();
+    $("call-status").textContent = "Idle";
+    $("timer").style.display = "none";
+    $("call-indicator").classList.remove("live");
+  });
 });
+
+$("run-btn").addEventListener("click", () => runPipeline(activeScenario));
 </script>
+</body>
+</html>
