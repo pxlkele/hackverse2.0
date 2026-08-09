@@ -15,7 +15,10 @@
  * the rules and the person's situation both change.
  */
 
-const VERSION = 'setu-v1';
+/* Bump this on every change to a shell file. The shell is served cache-first,
+   so a phone that has opened the app once will keep serving the old
+   index.html for ever otherwise - the fix ships and the device never sees it. */
+const VERSION = 'setu-v2';
 const SHELL = [
   './',
   './index.html',

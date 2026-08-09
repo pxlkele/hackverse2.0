@@ -203,6 +203,8 @@ const T = {
 };
 
 let lang = 'hi', callId = null, recorder = null, chunks = [], lastAudio = null, lastReason = null;
+let lastSpoken = '';        // the answer's words, so we can speak it without the server's mp3
+let audioUnlocked = false;
 const $ = id => document.getElementById(id);
 const t = () => T[lang];
 
@@ -276,12 +278,33 @@ async function ensureCall() {
   return callId;
 }
 
-function play(url) {
-  if (!url) return;
-  lastAudio = url;
+/* Android only lets an <audio> element start on its own once a tap has started
+   it at least once. Our answer arrives 8-40 seconds after the tap, long after
+   that permission has expired, so play() was rejected and the caller got the
+   answer as text in silence. Starting the element on a blank clip inside the
+   tap itself buys the permission early and keeps it for the session. */
+const SILENCE = 'data:audio/wav;base64,UklGRmQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  const p = $('player');
+  p.src = SILENCE;
+  const r = p.play();
+  if (r) r.then(() => { audioUnlocked = true; }).catch(() => {});
+}
+
+/* Speak an answer. `url` is the server's mp3, `text` the same words.
+   lastAudio is assigned on every single answer, including when there is no
+   audio at all: leaving the previous turn's url in place is what made the
+   replay button play "I could not hear you" over an answer that had arrived. */
+function playAnswer(url, text) {
+  lastAudio = url || null;
+  if (text) lastSpoken = text;
+  if (!url) { say(lastSpoken); return; }   // server TTS failed - the device voice still speaks
   const p = $('player');
   p.src = url;
-  p.play().catch(() => {});   // autoplay can be blocked; the replay button covers it
+  const r = p.play();
+  if (r) r.catch(() => say(lastSpoken));   // still blocked - fall back rather than go silent
 }
 
 function render(turn) {
@@ -289,7 +312,7 @@ function render(turn) {
   $('answerText').textContent = turn.say || '';
   $('answerCard').classList.remove('hidden');
   $('human').classList.remove('hidden');
-  play(turn.audio_url);
+  playAnswer(turn.audio_url, turn.say);
 
   const decisions = detail.decisions || [];
   $('schemes').innerHTML = decisions.map(d => {
@@ -395,6 +418,7 @@ async function startRec() {
 // Tap to start, tap to stop — hold-to-talk is fiddly on a cheap touchscreen and
 // gives no second chance if the finger slips.
 $('talk').onclick = async () => {
+  unlockAudio();   // must happen inside the tap, before any await
   if (recorder && recorder.state === 'recording') { recorder.stop(); recorder = null; return; }
   say(t().talk);
   try {
@@ -414,14 +438,14 @@ $('talk').onclick = async () => {
   }
 };
 
-$('replay').onclick = () => { if (lastAudio) play(lastAudio); };
+$('replay').onclick = () => { unlockAudio(); playAnswer(lastAudio, lastSpoken); };
 
 $('human').onclick = async () => {
   say(t().human);
   if (!callId) return;
   const r = await api('/api/ivr/digit', { call_id: callId, digit: '0' });
   $('answerText').textContent = r.turn.say;
-  play(r.turn.audio_url);
+  playAnswer(r.turn.audio_url, r.turn.say);
 };
 
 const setOnline = () => document.body.classList.toggle('offline', !navigator.onLine);

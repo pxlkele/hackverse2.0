@@ -224,6 +224,37 @@ def transcribe_auto(
     return text, detected, confidence
 
 
+def _run_blocking(coro) -> None:
+    """
+    Run an async job to completion from either kind of caller.
+
+    asyncio.run() raises if a loop is already running, and `POST /api/ivr/speech`
+    is an `async def` — so every answer to a *spoken* question failed TTS here and
+    came back with audio_url=None while the typed path worked perfectly. The
+    caller only saw "the app shows text but never talks". When we are already on
+    a loop, hand the job to a thread that owns a loop of its own.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)                     # no loop here: the ordinary path
+        return
+
+    box: dict[str, BaseException] = {}
+
+    def _worker() -> None:
+        try:
+            asyncio.run(coro)
+        except BaseException as exc:          # noqa: BLE001 - re-raised on the caller's thread
+            box["exc"] = exc
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    thread.join()
+    if "exc" in box:
+        raise box["exc"]
+
+
 def speak(text: str, lang: str = "hi", force: bool = False) -> Path:
     """
     Text -> mp3. Cached by content, so a rehearsed line is synthesised once and
@@ -252,7 +283,7 @@ def speak(text: str, lang: str = "hi", force: bool = False) -> Path:
         await edge_tts.Communicate(text, voice).save(str(out))
 
     try:
-        asyncio.run(_run())
+        _run_blocking(_run())
     except Exception as exc:  # noqa: BLE001 - any failure must fall back
         out.unlink(missing_ok=True)  # never leave a partial file to be cached
         raise VoiceError(f"TTS failed ({exc}). Pre-cache this line.") from exc
