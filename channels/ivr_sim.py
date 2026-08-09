@@ -61,8 +61,31 @@ Expect = Literal["digit", "speech", "end"]
 
 PROMPTS = {
     "greeting": {
-        "hi": "नमस्ते। सेतु में आपका स्वागत है। हिंदी के लिए एक दबाइए। For English, press two.",
-        "en": "नमस्ते। सेतु में आपका स्वागत है। हिंदी के लिए एक दबाइए। For English, press two.",
+        # All eight languages spoken in the greeting. Each line is delivered in
+        # its own language so the caller recognises theirs by ear, not by number.
+        # Kept short — one clause per language.
+        "hi": (
+            "नमस्ते। सेतु में आपका स्वागत है। "
+            "हिंदी के लिए एक दबाइए। "
+            "For English, press two. "
+            "मराठीसाठी तीन दाबा। "
+            "ગુજરાતી માટે ચાર દબાવો. "
+            "বাংলার জন্য পাঁচ চাপুন। "
+            "தமிழுக்கு ஆறு அழுத்தவும். "
+            "తెలుగు కోసం ఏడు నొక్కండి. "
+            "ಕನ್ನಡಕ್ಕಾಗಿ ಎಂಟು ಒತ್ತಿ."
+        ),
+        "en": (
+            "नमस्ते। सेतु में आपका स्वागत है। "
+            "हिंदी के लिए एक दबाइए। "
+            "For English, press two. "
+            "मराठीसाठी तीन दाबा। "
+            "ગુજરાતી માટે ચાર દબાવો. "
+            "বাংলার জন্য পাঁচ চাপুন। "
+            "தமிழுக்கு ஆறு அழுத்தவும். "
+            "తెలుగు కోసం ఏడు నొక్కండి. "
+            "ಕನ್ನಡಕ್ಕಾಗಿ ಎಂಟು ಒತ್ತಿ."
+        ),
     },
     "ask_situation": {
         "hi": (
@@ -258,6 +281,48 @@ PROMPTS = {
         "te": "సేతుకు ఫోన్ చేసినందుకు ధన్యవాదాలు. నమస్కారం.",
         "kn": "ಸೇತುಗೆ ಫೋನ್ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಮಸ್ಕಾರ.",
     },
+    # After the initial answer plays, the caller is invited to keep talking.
+    # Anything they say next is treated as a follow-up chat question.
+    "invite_chat": {
+        "hi": "कोई और सवाल हो तो पूछिए। रोकने के लिए शून्य, फिर से शुरू करने के लिए एक दबाइए।",
+        "en": "Ask anything else. Press zero to pause, one to start over.",
+        "mr": "आणखी काही विचारायचं असेल तर विचारा. थांबवायला शून्य, पुन्हा सुरू करायला एक दाबा.",
+        "gu": "કંઈ પણ પૂછો. રોકવા માટે શૂન્ય, ફરી શરૂ કરવા માટે એક દબાવો.",
+        "bn": "আরও কিছু জিজ্ঞেস করুন। থামাতে শূন্য, নতুন করে শুরু করতে এক চাপুন।",
+        "ta": "வேறு ஏதேனும் கேளுங்கள். நிறுத்த பூஜ்ஜியம், மறுபடி தொடங்க ஒன்று அழுத்துங்கள்.",
+        "te": "ఇంకేదైనా అడగండి. ఆపడానికి సున్నా, మళ్ళీ ప్రారంభించడానికి ఒకటి నొక్కండి.",
+        "kn": "ಇನ್ನೇನಾದರೂ ಕೇಳಿ. ನಿಲ್ಲಿಸಲು ಸೊನ್ನೆ, ಮರುಪ್ರಾರಂಭಿಸಲು ಒಂದು ಒತ್ತಿ.",
+    },
+    "chat_paused": {
+        "hi": "ठीक है, रुक गया। जब तैयार हों, दोबारा बोलिए।",
+        "en": "Okay, paused. Speak when you are ready.",
+        "mr": "ठीक आहे, थांबलो. तयार असाल तेव्हा बोला.",
+        "gu": "ઠીક છે, રોકાયું. તૈયાર હો ત્યારે બોલો.",
+        "bn": "ঠিক আছে, থেমেছি। প্রস্তুত হলে বলুন।",
+        "ta": "சரி, நிறுத்தினேன். தயாரானபோது பேசுங்கள்.",
+        "te": "సరే, ఆగాను. సిద్ధమైనప్పుడు మాట్లాడండి.",
+        "kn": "ಸರಿ, ನಿಂತೆ. ಸಿದ್ಧವಾದಾಗ ಮಾತನಾಡಿ.",
+    },
+    "chat_restart": {
+        "hi": "फिर से शुरू करते हैं। बीप के बाद अपनी बात बताइए।",
+        "en": "Starting over. Tell me your situation after the beep.",
+        "mr": "पुन्हा सुरू करूया. बीप नंतर तुमची परिस्थिती सांगा.",
+        "gu": "ફરી શરૂ કરીએ. બીપ પછી તમારી પરિસ્થિતિ કહો.",
+        "bn": "আবার শুরু করছি। বীপের পরে আপনার পরিস্থিতি বলুন।",
+        "ta": "மறுபடி தொடங்குகிறோம். பீப்பிற்குப் பிறகு உங்கள் நிலையைச் சொல்லுங்கள்.",
+        "te": "మళ్ళీ ప్రారంభిస్తున్నాము. బీప్ తర్వాత మీ పరిస్థితి చెప్పండి.",
+        "kn": "ಮತ್ತೆ ಪ್ರಾರಂಭಿಸೋಣ. ಬೀಪ್ ನಂತರ ನಿಮ್ಮ ಪರಿಸ್ಥಿತಿಯನ್ನು ಹೇಳಿ.",
+    },
+    "chat_dontknow": {
+        "hi": "मुझे इसकी सटीक जानकारी नहीं है। कृपया अपने नज़दीकी बैंक मित्र या सी. एस. सी. केंद्र से पूछें।",
+        "en": "I don't have that specific information. Please check with your nearest Bank Mitra or CSC operator.",
+        "mr": "मला याची नक्की माहिती नाही. कृपया तुमच्या जवळच्या बँक मित्र किंवा सी. एस. सी. केंद्रात विचारा.",
+        "gu": "મારી પાસે એની ચોક્કસ માહિતી નથી. કૃપા કરીને તમારા નજીકના બેંક મિત્ર અથવા સી. એસ. સી. કેન્દ્રમાં પૂછો.",
+        "bn": "আমার কাছে এর নির্দিষ্ট তথ্য নেই। দয়া করে আপনার নিকটতম ব্যাংক মিত্র বা সি. এস. সি. অপারেটরের সঙ্গে কথা বলুন।",
+        "ta": "எனக்கு அது சரியாகத் தெரியாது. உங்கள் அருகிலுள்ள வங்கி மித்ரா அல்லது சி. எஸ். சி. ஆபரேட்டரிடம் கேளுங்கள்.",
+        "te": "నాకు దాని ఖచ్చితమైన సమాచారం లేదు. దయచేసి మీ దగ్గరి బ్యాంక్ మిత్ర లేదా సి. ఎస్. సి. ఆపరేటర్‌ను అడగండి.",
+        "kn": "ನನಗೆ ಆ ನಿಖರ ಮಾಹಿತಿ ಇಲ್ಲ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಹತ್ತಿರದ ಬ್ಯಾಂಕ್ ಮಿತ್ರ ಅಥವಾ ಸಿ. ಎಸ್. ಸಿ. ಆಪರೇಟರ್‌ರನ್ನು ಕೇಳಿ.",
+    },
 }
 
 # The offered languages, and the only place that list lives. voice.ASR_LANGUAGES
@@ -311,6 +376,10 @@ class Session:
     last_text: str = ""
     decisions: list = field(default_factory=list)
     transcript: list[dict] = field(default_factory=list)
+    # Chat mode context — populated after the initial answer so follow-up
+    # questions can reference the schemes the caller already qualified for.
+    last_profile: object = None                                # Profile after the first pipeline run
+    chat_history: list[dict] = field(default_factory=list)     # [{role, content}]
 
 
 # In-memory: a hackathon demo, one caller at a time, and a restart between runs
@@ -349,6 +418,14 @@ MENU_AFTER_ANSWER = [
     {"digit": "1", "label_en": "Repeat", "label_hi": "दोबारा"},
     {"digit": "2", "label_en": "Start application", "label_hi": "आवेदन शुरू करें"},
     {"digit": "0", "label_en": "Talk to a person", "label_hi": "व्यक्ति से बात करें"},
+]
+
+# After the initial answer plays we drop the caller straight into free chat:
+# any speech they say next is treated as a follow-up question to the LLM.
+# 0 pauses, 1 wipes the session and starts a new conversation.
+MENU_CHAT = [
+    {"digit": "0", "label_en": "Pause",   "label_hi": "रोकें"},
+    {"digit": "1", "label_en": "Restart", "label_hi": "फिर से शुरू करें"},
 ]
 
 LANGUAGE_MENU = [
@@ -394,10 +471,41 @@ def on_digit(call_id: str, digit: str) -> Turn:
         return _turn(session, "goodbye", "end")
 
     if session.state == "greeting":
-        if digit in ("1", "2"):
-            session.language = "hi" if digit == "1" else "en"
+        # 1..8 maps to SUPPORTED_LANGUAGES in the order they were introduced.
+        DIGIT_TO_LANG = {
+            "1": "hi", "2": "en", "3": "mr", "4": "gu",
+            "5": "bn", "6": "ta", "7": "te", "8": "kn",
+        }
+        if digit in DIGIT_TO_LANG:
+            session.language = DIGIT_TO_LANG[digit]
             return _turn(session, "ask_situation", "speech")
         return _turn(session, "not_understood", "digit", options=LANGUAGE_MENU)
+
+    # Chat mode: 0 pauses (mic reopens silently), 1 wipes the conversation
+    # and drops the caller back to ask_situation in the current language.
+    if session.state == "chatting":
+        if digit == "0":
+            return Turn(
+                say=prompt_text("chat_paused", session.language),
+                expect="speech",
+                state="chatting",
+                audio_url=_audio_url_for(prompt_text("chat_paused", session.language), session.language),
+                options=MENU_CHAT,
+            )
+        if digit == "1":
+            session.state = "await_situation"
+            session.chat_history.clear()
+            session.decisions = []
+            session.last_answer = ""
+            session.last_profile = None
+            return Turn(
+                say=prompt_text("chat_restart", session.language),
+                expect="speech",
+                state="await_situation",
+                audio_url=_audio_url_for(prompt_text("chat_restart", session.language), session.language),
+            )
+        # any other digit in chat mode — treat as "restart" hint; fall through
+        return _turn(session, "not_understood", "digit", options=MENU_CHAT)
 
     # After an answer, or after any dead end that offered "press 1 to retry".
     if digit == "1":
@@ -493,19 +601,21 @@ def on_speech(call_id: str, text: str) -> Turn:
 
     session.decisions = decisions
     session.last_answer = spoken
+    session.last_profile = user_profile
     session.transcript.append({"who": "setu", "text": spoken})
 
-    # The answer and the menu are spoken back to back, but they are separate
-    # audio files so "press 1 to repeat" can replay the answer alone.
-    menu = prompt_text("after_answer", session.language)
-    session.state = "after_answer"
+    # After the initial answer we transition to chat: mic reopens and anything
+    # the caller says next is routed to on_chat(). The invite line tells them
+    # they can keep talking, pause (0), or restart (1).
+    menu = prompt_text("invite_chat", session.language)
+    session.state = "chatting"
 
     return Turn(
         say=f"{spoken}\n\n{menu}",
-        expect="digit",
-        state="after_answer",
+        expect="speech",
+        state="chatting",
         audio_url=_audio_url_for(spoken, session.language),
-        options=MENU_AFTER_ANSWER,
+        options=MENU_CHAT,
         detail={
             "transcript": text,
             "profile": user_profile.model_dump(mode="json"),
@@ -514,6 +624,122 @@ def on_speech(call_id: str, text: str) -> Turn:
             "decisions": narrate.localise_decisions(decisions, session.language),
             "menu_audio_url": _audio_url_for(menu, session.language),
         },
+    )
+
+
+# ── Follow-up chat ───────────────────────────────────────────────────────────
+
+def _chat_system_prompt(session) -> str:
+    """
+    A system prompt that grounds the LLM in the schemes the caller already
+    qualified for. Passing the amounts + step counts here means the model can
+    answer "which docs?" / "how much?" / "where do I go?" without inventing
+    schemes it wasn't told about.
+    """
+    lang_label = LANGUAGE_LABELS.get(session.language, session.language)
+    scheme_lines = []
+    for d in session.decisions or []:
+        name = getattr(d, "scheme_name", None) or getattr(d, "scheme_id", "?")
+        benefit = getattr(d, "benefit_summary", "") or ""
+        amount = getattr(d, "benefit_amount_rupees", None)
+        amount_str = f" (₹{int(amount):,})" if amount else ""
+        ladder = getattr(d, "ladder", None) or []
+        steps = ", ".join(
+            f"{i + 1}. {getattr(step, 'action', '')}"
+            for i, step in enumerate(ladder[:4])
+        )
+        scheme_lines.append(f"- {name}{amount_str}: {benefit}. Steps: {steps}")
+    schemes_block = "\n".join(scheme_lines) or "(no schemes qualified)"
+
+    profile = session.last_profile
+    p_bits = []
+    if profile is not None:
+        for f in ("occupation", "age", "daily_income", "monthly_income", "city", "state", "documents"):
+            v = getattr(profile, f, None)
+            if v not in (None, [], ""):
+                p_bits.append(f"{f}={v}")
+    profile_str = ", ".join(p_bits) or "(no profile facts)"
+
+    return (
+        f"You are Setu, an advisor for informal-sector workers in India. "
+        f"You just told the caller about these schemes:\n{schemes_block}\n\n"
+        f"Caller profile: {profile_str}\n\n"
+        f"Answer their next question in {lang_label}. 2-3 short sentences.\n"
+        f"\n"
+        f"CRITICAL: Answer the SPECIFIC question asked. Do not switch topics.\n"
+        f"- If they ask WHERE / kahan / कहाँ / कुठे / ક્યાં / কোথায় → answer with a location.\n"
+        f"- If they ask WHAT DOCS / kaunse documents / documents kya → list documents.\n"
+        f"- If they ask HOW MUCH / kitna → answer with amount or time.\n"
+        f"- If they ask HOW / kaise → answer with steps.\n"
+        f"\n"
+        f"Locations you may reference:\n"
+        f"- Bank account (Jan Dhan / savings): any bank branch or India Post office. Bring Aadhaar.\n"
+        f"- PM SVANidhi loan: apply at any nationalised bank, RRB, cooperative bank, or SFB. "
+        f"  The Urban Local Body / Town Vending Committee issues the Letter of Recommendation.\n"
+        f"- PMSBY / PMJJBY insurance: enroll at the bank where your savings account is held.\n"
+        f"- E-Shram card, PMJDY account, general documents: nearest CSC (Common Service Centre) "
+        f"  operator or Bank Mitra.\n"
+        f"- To reach a human advisor for anything else: nearest CSC centre or Bank Mitra.\n"
+        f"\n"
+        f"Only reference the schemes listed above — never invent new ones. If the question is "
+        f"outside all of this, say you do not have that specific information and to check with "
+        f"the nearest Bank Mitra or CSC operator."
+    )
+
+
+CHAT_MAX_TOKENS = int(os.getenv("SETU_CHAT_MAX_TOKENS", "120"))
+# Trim old turns so the prompt stays small — cap at the last 6 exchanges
+# (=12 messages). Ollama's context is small and Granite slows sharply with it.
+CHAT_HISTORY_TURNS = 6
+
+
+def on_chat(call_id: str, text: str) -> Turn:
+    """Follow-up chat with the LLM, grounded in the caller's profile + decisions."""
+    from services.api.core import llm  # local import to avoid slowing cold imports
+
+    session = _session(call_id)
+    text = (text or "").strip()
+
+    if not text:
+        return Turn(
+            say=prompt_text("nothing_heard", session.language),
+            expect="speech",
+            state="chatting",
+            audio_url=_audio_url_for(prompt_text("nothing_heard", session.language), session.language),
+            options=MENU_CHAT,
+        )
+
+    phone_bus.publish({"type": "user_speech", "call_id": call_id, "text": text})
+    session.transcript.append({"who": "caller", "text": text})
+    session.last_text = text
+
+    system = _chat_system_prompt(session)
+    trimmed = session.chat_history[-(CHAT_HISTORY_TURNS * 2):]
+    messages = [{"role": "system", "content": system}] + trimmed + [{"role": "user", "content": text}]
+
+    try:
+        started = time.monotonic()
+        reply = llm.chat_multi(messages, temperature=0.2, max_tokens=CHAT_MAX_TOKENS).strip()
+        print(f"chat call={call_id} lang={session.language} llm={time.monotonic() - started:.1f}s "
+              f"in={len(text)} out={len(reply)}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"chat call={call_id} LLM FAILED {type(exc).__name__}: {exc}", flush=True)
+        reply = prompt_text("chat_dontknow", session.language)
+
+    if not reply:
+        reply = prompt_text("chat_dontknow", session.language)
+
+    session.chat_history.append({"role": "user", "content": text})
+    session.chat_history.append({"role": "assistant", "content": reply})
+    session.transcript.append({"who": "setu", "text": reply})
+
+    return Turn(
+        say=reply,
+        expect="speech",
+        state="chatting",
+        audio_url=_audio_url_for(reply, session.language),
+        options=MENU_CHAT,
+        detail={"chat_turn": len(session.chat_history) // 2},
     )
 
 
@@ -577,6 +803,9 @@ def say_text(request: TextRequest):
     This is demo insurance. If the microphone fails on stage, the persona
     buttons still drive a real call through the real pipeline.
     """
+    session = _SESSIONS.get(request.call_id)
+    if session and session.state == "chatting":
+        return {"turn": on_chat(request.call_id, request.text).__dict__}
     return {"turn": on_speech(request.call_id, request.text).__dict__}
 
 
@@ -656,8 +885,10 @@ async def post_speech(call_id: str = Form(...), audio: UploadFile = File(...)):
             f"{audio.content_type!r} decoded to nothing",
             flush=True,
         )
+    # Route to chat mode once the initial answer has been given.
+    handler = on_chat if session.state == "chatting" else on_speech
     return {
-        "turn": on_speech(call_id, text).__dict__,
+        "turn": handler(call_id, text).__dict__,
         "transcript": text,
         # So the client can move its own UI to the language that was actually
         # spoken, rather than staying on the chip the caller tapped.

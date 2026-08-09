@@ -79,6 +79,40 @@ def chat(
         return response.json()["message"]["content"]
 
 
+def chat_multi(
+    messages: list[dict[str, str]],
+    temperature: float = 0.2,
+    max_tokens: int | None = None,
+) -> str:
+    """
+    Multi-turn chat. `messages` is a list of {"role": "system"|"user"|"assistant",
+    "content": str} in order — used by the follow-up chat mode in ivr_sim so a
+    caller can ask "which docs?", "where do I go?" after the initial answer.
+
+    Same latency profile as chat() but with a full history the model can see.
+    """
+    if BACKEND != "ollama":
+        raise LLMError(f"backend '{BACKEND}' not wired up yet")
+
+    options: dict[str, Any] = {"temperature": temperature}
+    if max_tokens is not None:
+        options["num_predict"] = max_tokens
+
+    with httpx.Client(timeout=TIMEOUT) as client:
+        response = client.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={
+                "model": CHAT_MODEL,
+                "messages": messages,
+                "stream": False,
+                "keep_alive": KEEP_ALIVE,
+                "options": options,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["message"]["content"]
+
+
 def chat_json(
     prompt: str,
     schema: dict[str, Any] | None = None,

@@ -85,7 +85,9 @@ def _twiml(turn: Turn) -> str:
 
     # ── gather / record / hangup ─────────────────────────────────────────────
     if turn.expect == "digit":
-        lines.append(f'  <Gather numDigits="1" action="{PUBLIC_URL}/twilio/gather" method="POST"/>')
+        # timeout=12 gives the caller room to hear the full 8-language menu
+        # (~20s) and still pick without being redirected as silence.
+        lines.append(f'  <Gather numDigits="1" timeout="12" action="{PUBLIC_URL}/twilio/gather" method="POST"/>')
     elif turn.expect == "speech":
         lines.append(
             f'  <Record maxLength="15" playBeep="true" '
@@ -123,16 +125,17 @@ def _call_back(to: str) -> None:
 
     try:
         with httpx.Client(timeout=15) as client:
+            # Trial accounts reject StatusCallback* parameters (error: "Invalid
+            # or disallowed parameters provided - trial accounts have limited
+            # parameter access"). Send only the essentials — call still connects
+            # and hits /twilio/incoming; we just don't get an end-of-call ping.
             resp = client.post(
                 f"https://api.twilio.com/2010-04-01/Accounts/{ACCOUNT_SID}/Calls.json",
                 auth=(ACCOUNT_SID, AUTH_TOKEN),
                 data={
-                    "To":  to,
+                    "To":   to,
                     "From": FROM_NUMBER,
                     "Url":  f"{PUBLIC_URL}/twilio/incoming",
-                    "StatusCallback":       f"{PUBLIC_URL}/twilio/status",
-                    "StatusCallbackMethod": "POST",
-                    "StatusCallbackEvent":  "completed",
                 },
             )
         if resp.status_code == 201:
