@@ -43,6 +43,7 @@ from services.api.core import (
     eligibility,
     narrate,
     pathfinder,
+    phone_bus,
     profile as profile_mod,
     store,
     voice,
@@ -451,6 +452,9 @@ def on_speech(call_id: str, text: str) -> Turn:
     if not text:
         return _turn(session, "nothing_heard", "digit")
 
+    # Mirror to the console (Twilio, PWA speech, PWA text bypass all land here).
+    phone_bus.publish({"type": "user_speech", "call_id": call_id, "text": text})
+
     session.last_text = text
     session.transcript.append({"who": "caller", "text": text})
 
@@ -543,6 +547,9 @@ def languages():
 
 @router.post("/call")
 def start_call(request: CallRequest | None = None):
+    # Deliberately no call_started publish: the PWA hits this on page load, so
+    # publishing here would leave a persistent "LIVE" chip in the console every
+    # time someone opened the PWA tab. Only user_speech (below) is mirrored.
     call_id, turn = begin(request.language if request else None)
     return {"call_id": call_id, "turn": turn.__dict__}
 

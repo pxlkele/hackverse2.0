@@ -34,6 +34,7 @@ import httpx
 from fastapi import APIRouter, Form, Request, Response
 
 from channels.ivr_sim import begin, on_digit, on_speech, Turn
+from services.api.core import phone_bus
 
 router = APIRouter(prefix="/twilio", tags=["twilio"])
 log = logging.getLogger("setu.twilio")
@@ -48,7 +49,7 @@ FROM_NUMBER   = os.getenv("TWILIO_PHONE_NUMBER", "")
 
 # How long the inbound call must ring before we treat it as a missed call.
 # A genuine caller stays on; someone doing a missed-call drop hangs up in <5s.
-MISSED_CALL_MAX_DURATION = 8   # seconds
+MISSED_CALL_MAX_DURATION = 15  # seconds — international ring can be slow
 
 
 def _twiml(turn: Turn) -> str:
@@ -70,8 +71,13 @@ def _twiml(turn: Turn) -> str:
     # full public URL for Twilio to fetch it. If PUBLIC_URL is not set we fall
     # back to <Say>.
     if turn.audio_url and PUBLIC_URL:
-        full = f"{PUBLIC_URL}{turn.audio_url}"
-        lines.append(f'  <Play>{full}</Play>')
+        lines.append(f'  <Play>{PUBLIC_URL}{turn.audio_url}</Play>')
+        # The IVR sim splits answer and menu into two audio files so "press 1
+        # to replay" can loop the answer alone. Chain them here so the caller
+        # actually hears "press 1 for X, 2 for Y, 0 to talk to someone".
+        menu_url = (turn.detail or {}).get("menu_audio_url") if hasattr(turn, "detail") else None
+        if menu_url:
+            lines.append(f'  <Play>{PUBLIC_URL}{menu_url}</Play>')
     else:
         # Polly.Aditi is the only Indian Hindi voice on Twilio's free tier.
         safe = turn.say.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -153,6 +159,7 @@ async def incoming(
     call_id, turn = begin()   # language=None → bilingual greeting
     _CALL_MAP[CallSid]   = call_id
     _CALL_START[CallSid] = time.monotonic()
+    phone_bus.publish({"type": "call_started", "call_id": call_id, "from": From})
     return _xml(_twiml(turn))
 
 
@@ -248,7 +255,9 @@ async def status(
         threading.Thread(target=_call_back, args=(From,), daemon=True).start()
 
     # Clean up
-    _CALL_MAP.pop(CallSid, None)
+    call_id = _CALL_MAP.pop(CallSid, None)
     _CALL_START.pop(CallSid, None)
+
+    phone_bus.publish({"type": "call_ended", "call_id": call_id, "missed": is_missed})
 
     return Response(content="", status_code=204)

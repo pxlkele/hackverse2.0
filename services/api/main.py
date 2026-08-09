@@ -15,14 +15,25 @@ import time
 import uuid
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env before importing any module that reads env at import time
+# (channels.twilio_webhook captures PUBLIC_URL / TWILIO_* on import;
+# voice.py captures VOICE_MODE). override=True so edits to .env win over
+# whatever was in the shell env when uvicorn was started.
+load_dotenv(override=True)
+
+import asyncio
+import json
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .core import (
     doc_doctor, eligibility, ledger, llm, narrate, pathfinder,
-    profile as profile_mod, rag, store, voice,
+    phone_bus, profile as profile_mod, rag, store, voice,
 )
 from pydantic import BaseModel
 
@@ -334,9 +345,36 @@ def voice_health():
     return voice.cache_stats()
 
 
+@app.get("/api/phone/stream")
+async def phone_stream():
+    """SSE stream of phone events (call start, user_speech transcripts, call end).
+    The console subscribes to mirror the caller's transcript into its input."""
+    q = phone_bus.subscribe()
+
+    async def gen():
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"  # keeps proxies from closing idle streams
+        finally:
+            phone_bus.unsubscribe(q)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
 # IVR simulator — browser keypad transport
 from channels.ivr_sim import router as ivr_router  # noqa: E402
 app.include_router(ivr_router)
+
+# Vendor PWA — served from the same origin so relative /api/ivr/* calls work
+# and so mic access is on HTTPS when reached via ngrok.
+_PWA_DIR = Path(__file__).resolve().parents[2] / "apps" / "web" / "pwa"
+if _PWA_DIR.exists():
+    app.mount("/pwa", StaticFiles(directory=str(_PWA_DIR), html=True), name="pwa")
 
 # Twilio webhook — real phone calls through the same state machine
 from channels.twilio_webhook import router as twilio_router  # noqa: E402

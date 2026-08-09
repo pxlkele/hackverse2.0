@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import UniqueLoading from "@/app/components/ui/morph-loading";
 import {
   Mic, Database, Volume2, Send, RotateCcw, CheckCircle2,
   Loader2, Activity, FileText, TrendingUp, Upload, AlertTriangle,
@@ -85,43 +86,287 @@ const SAMPLES = [
   { label: "Vendor with everything",      text: "Main 40 saal ka hoon, Delhi mein chaat ka thela lagata hoon. Roz hazaar ka dhandha. Aadhaar, bank passbook, vending certificate aur PhonePe sab hai." },
 ];
 
-type Tab = "pipeline" | "doctor" | "ledger";
+type Tab = "landing" | "pipeline" | "doctor" | "ledger";
 type Status = "idle" | "processing" | "complete";
+
+const NAV: { key: Tab | "demo"; label: string }[] = [
+  { key: "demo",     label: "See Demo" },
+  { key: "pipeline", label: "Go to Dashboard" },
+  { key: "ledger",   label: "Go to Ledger" },
+  { key: "doctor",   label: "Go to Doc Doctor" },
+];
 
 /* ─────────────── root ─────────────── */
 export default function App() {
-  const [tab, setTab] = useState<Tab>("pipeline");
+  const [tab, setTab] = useState<Tab>("landing");
+  const [booting, setBooting] = useState(true);
+
+  useEffect(() => {
+    // Loader is a moment of visual anchoring before the landing choreography
+    // takes over. Stay long enough for a full morph cycle (2s) so the loader
+    // reads as intentional rather than a flash.
+    const t = setTimeout(() => setBooting(false), 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const onNav = (key: Tab | "demo") => {
+    if (key === "demo") return;  // wire up when the demo video is ready
+    setTab(key);
+  };
+
+  // Hide "See Demo" and the current tab's own nav entry once we've left the
+  // landing page — the landing already has its own "See Demo" + "Enter Dashboard"
+  // buttons, and no page should surface a link back to itself.
+  const visibleNav = tab === "landing"
+    ? NAV
+    : NAV.filter(n => n.key !== "demo" && n.key !== tab);
 
   return (
-    <div className="w-full bg-black overflow-hidden" style={{ height: "100dvh", fontFamily: "'Oxanium', sans-serif" }}>
+    <div className="w-full bg-black overflow-hidden" style={{ height: "100dvh", fontFamily: "'Roboto', sans-serif" }}>
+      {/* boot loader — crossfades into the landing hero.
+          The `dark` class flips the loader's inner squares from bg-black to
+          bg-white so they're visible against our black background. */}
+      <AnimatePresence>
+        {booting && (
+          <motion.div
+            key="morph-loader"
+            className="dark fixed inset-0 z-50 flex items-center justify-center bg-black"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.7, ease: "easeInOut" }}>
+            <UniqueLoading variant="morph" size="lg" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* header */}
-      <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-8 py-4 border-b border-white/5 bg-black/70 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <Activity className="w-3.5 h-3.5 text-white/20" />
-          <span className="text-[10px] tracking-[0.32em] uppercase text-white/20" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            SETU · AI PIPELINE MONITOR
-          </span>
-        </div>
+      <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-end px-8 py-4 border-b border-white/5 bg-black/70 backdrop-blur-sm">
         <div className="flex items-center gap-1">
-          {(["pipeline","doctor","ledger"] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)}
-              className="px-4 py-1.5 rounded-lg text-[11px] tracking-wider uppercase transition-all"
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                background: tab === t ? "rgba(255,255,255,0.08)" : "transparent",
-                color: tab === t ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.25)",
-                border: tab === t ? "1px solid rgba(255,255,255,0.12)" : "1px solid transparent",
-              }}>
-              {t === "pipeline" ? "⚡ Pipeline" : t === "doctor" ? "🩺 Doc Doctor" : "📒 Ledger"}
-            </button>
-          ))}
+          {visibleNav.map((n) => {
+            const active = n.key !== "demo" && tab === n.key;
+            return (
+              <button key={n.key} onClick={() => onNav(n.key)}
+                className="px-5 py-2 rounded-full text-[16px] tracking-wider uppercase transition-all"
+                style={{
+                  fontFamily: "'Roboto', sans-serif",
+                  background: active ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.02)",
+                  color: active ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.5)",
+                  border: active ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(255,255,255,0.12)",
+                }}>
+                {n.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="pt-[52px] h-full">
-        {tab === "pipeline" && <PipelineTab />}
-        {tab === "doctor"   && <DocDoctorTab />}
-        {tab === "ledger"   && <LedgerTab />}
+      <div className={tab === "landing" ? "h-full" : "pt-[52px] h-full"}>
+        {!booting && tab === "landing"  && <LandingHero onNav={onNav} />}
+        {!booting && tab === "pipeline" && <PipelineTab />}
+        {!booting && tab === "doctor"   && <DocDoctorTab />}
+        {!booting && tab === "ledger"   && <LedgerTab />}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── landing / hero ─────────────── */
+import bobHead from "../assets/bob-head.webp";
+import bobBody from "../assets/bob-body.webp";
+
+function LandingHero({ onNav }: { onNav: (t: Tab | "demo") => void }) {
+  // Head tracks cursor. Image is split into two 512x512 layers — bob-body is
+  // static, bob-head is rotated in 3D around the neck (transform-origin at the
+  // base of the head), so the head swings independently of the body.
+  // The pupil highlights are overlays inside each eye's socket that slide
+  // toward the cursor within a small radius.
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [pupil, setPupil] = useState({ lx: 0, ly: 0, rx: 0, ry: 0 });
+  const bobRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const el = bobRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      // Head tilt anchored to the head center (top ~30% of the sprite box)
+      const headCx = r.left + r.width  / 2;
+      const headCy = r.top  + r.height * 0.30;
+      const dx = (e.clientX - headCx) / (window.innerWidth  / 2);
+      const dy = (e.clientY - headCy) / (window.innerHeight / 2);
+      const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+      setTilt({ x: clamp(dx) * 45, y: clamp(dy) * 28 });
+
+      // Pupil highlight tracking — each eye looks toward the cursor.
+      // Eye centers in image space: left (198,240), right (310,240) of 512.
+      // In the sprite box (r.width × r.height), that's 38.7%/46.9% and 60.5%/46.9%.
+      const maxTravel = Math.min(r.width, r.height) * 0.027;  // ~2.7% of sprite
+      const eyeFor = (cxPct: number, cyPct: number) => {
+        const ex = r.left + r.width  * cxPct;
+        const ey = r.top  + r.height * cyPct;
+        const vx = e.clientX - ex;
+        const vy = e.clientY - ey;
+        const mag = Math.hypot(vx, vy) || 1;
+        // Reach max travel as soon as the cursor is ~80px away
+        const t = Math.min(1, mag / 80);
+        return { x: (vx / mag) * maxTravel * t, y: (vy / mag) * maxTravel * t };
+      };
+      // Use the true eye centers (198,240) and (310,240) of 512 — not the highlight positions.
+      const L = eyeFor(0.387, 0.469);
+      const R = eyeFor(0.605, 0.469);
+      setPupil({ lx: L.x, ly: L.y, rx: R.x, ry: R.y });
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
+  return (
+    <div className="relative w-full h-full overflow-hidden bg-black">
+      {/* faint grid backdrop */}
+      <motion.div
+        className="absolute inset-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.06 }}
+        transition={{ duration: 1.4, ease: "easeOut" }}
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
+          backgroundSize: "80px 80px",
+        }} />
+
+      {/* huge SETU wordmark behind the bot */}
+      <motion.div
+        className="absolute inset-x-0 flex items-center justify-center select-none pointer-events-none"
+        initial={{ opacity: 0, scale: 0.9, filter: "blur(20px)" }}
+        animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+        transition={{ duration: 1.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+        style={{ top: "18%", bottom: "auto" }}>
+        <span
+          className="font-black leading-none tracking-tighter"
+          style={{
+            fontSize: "clamp(12rem, 32vw, 34rem)",
+            color: "#d0d0d0",
+            letterSpacing: "-0.06em",
+            textShadow: "0 0 60px rgba(0,0,0,0.6)",
+          }}>
+          SETU
+        </span>
+      </motion.div>
+
+      {/* IBM Bob — head + body split so only the head tracks the cursor.
+          Positioning wrapper is plain (no framer) because framer's `animate`
+          takes over `transform` and would clobber the centering translate. */}
+      <div
+        className="absolute z-10"
+        style={{
+          left: "50%",
+          top:  "62%",
+          transform: "translate(-50%, -50%)",
+          perspective: "1000px",
+        }}>
+        <motion.div
+          initial={{ opacity: 0, y: 40, scale: 0.92 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 1.0, delay: 0.55, ease: [0.22, 1, 0.36, 1] }}>
+        <motion.div
+          ref={bobRef}
+          animate={{ y: [0, -3, 0] }}   // subtle breathing only; the head + pupils are what react to the cursor
+          transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+          style={{
+            position: "relative",
+            width: "clamp(240px, 30vw, 400px)",
+            aspectRatio: "1 / 1",
+            filter: "drop-shadow(0 30px 60px rgba(0,120,255,0.25)) drop-shadow(0 0 40px rgba(0,245,255,0.15))",
+          }}>
+          {/* Body layer — static */}
+          <img
+            src={bobBody}
+            alt=""
+            aria-hidden
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+          />
+          {/* Head layer + pupils — tilts as one, pupils also slide within sockets */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              transform: `rotateY(${tilt.x}deg) rotateX(${-tilt.y}deg) rotateZ(${tilt.x * 0.15}deg)`,
+              transformOrigin: "50% 66%",  // neck (y=340/512 ≈ 66%)
+              transition: "transform 140ms cubic-bezier(0.22, 1, 0.36, 1)",
+              willChange: "transform",
+              transformStyle: "preserve-3d",
+            }}>
+            <img
+              src={bobHead}
+              alt="Setu assistant"
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+            />
+            {/* Pupil highlights — white dots sliding within each black eye */}
+            {[
+              { key: "L", cx: "38.7%", cy: "46.9%", tx: pupil.lx, ty: pupil.ly },
+              { key: "R", cx: "60.5%", cy: "46.9%", tx: pupil.rx, ty: pupil.ry },
+            ].map(({ key, cx, cy, tx, ty }) => (
+              <div key={key} aria-hidden
+                style={{
+                  position: "absolute",
+                  left: cx, top: cy,
+                  width: "2.4%", height: "2.4%",
+                  background: "#ffffff",
+                  borderRadius: "50%",
+                  boxShadow: "0 0 3px rgba(255,255,255,0.9)",
+                  transform: `translate(-50%, -50%) translate(${tx}px, ${ty}px)`,
+                  transition: "transform 90ms ease-out",
+                  willChange: "transform",
+                  pointerEvents: "none",
+                }} />
+            ))}
+          </div>
+        </motion.div>
+        </motion.div>
+      </div>
+
+      {/* tagline under the bot */}
+      <div className="absolute z-10" style={{ bottom: "5vh", left: 0, right: 0 }}>
+        <div className="text-center">
+          <motion.div
+            className="text-[19px] tracking-[0.5em] uppercase mb-5"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 1.15, ease: "easeOut" }}
+            style={{ color: "rgba(255,255,255,0.35)", fontFamily: "'Roboto', sans-serif" }}>
+            welfare access, spoken plain
+          </motion.div>
+          <motion.div
+            className="flex items-center justify-center gap-2"
+            initial="hidden" animate="show"
+            variants={{ show: { transition: { staggerChildren: 0.1, delayChildren: 1.35 } } }}>
+            <motion.button onClick={() => onNav("pipeline")}
+              variants={{ hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0 } }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="px-8 py-3 rounded-xl text-[18px] tracking-widest uppercase transition-all"
+              style={{
+                fontFamily: "'Roboto', sans-serif",
+                background: "#00f5ff",
+                color: "#000",
+                fontWeight: 700,
+                boxShadow: "0 0 28px rgba(0,245,255,0.4), 0 0 56px rgba(0,245,255,0.15)",
+              }}>
+              Enter Dashboard
+            </motion.button>
+            <motion.button onClick={() => onNav("demo")}
+              variants={{ hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0 } }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="px-8 py-3 rounded-xl text-[18px] tracking-widest uppercase transition-all"
+              style={{
+                fontFamily: "'Roboto', sans-serif",
+                background: "transparent",
+                color: "rgba(255,255,255,0.55)",
+                border: "1px solid rgba(255,255,255,0.15)",
+              }}>
+              See Demo
+            </motion.button>
+          </motion.div>
+        </div>
       </div>
     </div>
   );
@@ -138,7 +383,27 @@ function PipelineTab() {
   const [result, setResult]     = useState<ReasonResponse | null>(null);
   const [error, setError]       = useState("");
   const [lang, setLang]         = useState("hi");
+  const [phoneLive, setPhoneLive] = useState<{ from: string } | null>(null);
   const abortRef                = useRef(false);
+
+  // Phone → console bridge. When the Twilio webhook transcribes what the
+  // caller said, mirror it into the input textarea so the operator sees it live.
+  useEffect(() => {
+    const es = new EventSource("/api/phone/stream");
+    es.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.type === "call_started") {
+          setPhoneLive({ from: data.from || "unknown" });
+        } else if (data.type === "user_speech" && data.text) {
+          setInput(data.text);
+        } else if (data.type === "call_ended") {
+          setPhoneLive(null);
+        }
+      } catch { /* keepalive / comment lines */ }
+    };
+    return () => es.close();
+  }, []);
   const r0 = useRef<HTMLDivElement>(null);
   const r1 = useRef<HTMLDivElement>(null);
   const r2 = useRef<HTMLDivElement>(null);
@@ -187,7 +452,9 @@ function PipelineTab() {
     setResult(null); setInput(""); setError(""); scrollTo(0);
   };
 
-  const prog = statuses.map(s => s === "complete" ? 1 : s === "processing" ? 0.5 : 0);
+  // Processing draws the full streak (reaches the bottom) so the pulse has
+  // something to breathe on. Idle still hides it, complete keeps it fully lit.
+  const prog = statuses.map(s => s === "complete" ? 1 : s === "processing" ? 1 : 0);
   const allDone = statuses.every(s => s === "complete");
 
   return (
@@ -206,17 +473,21 @@ function PipelineTab() {
                   opacity: statuses[i] === "complete" ? 1 : 0.1 }} />
             )}
 
-            <div style={{ maxWidth: 540 }}>
+            <div style={{
+              maxWidth: i === 0 ? 460 : 540,
+              transform: i === 0 ? "scale(1.5)" : undefined,
+              transformOrigin: "left center",
+            }}>
               {/* stage label */}
               <div className="flex items-center gap-3 mb-6">
-                <span className="text-[10px] tracking-[0.38em] uppercase" style={{ color: stage.color, fontFamily:"'JetBrains Mono',monospace" }}>{stage.num}</span>
+                <span className="text-[10px] tracking-[0.38em] uppercase" style={{ color: stage.color, fontFamily:"'Roboto', sans-serif" }}>{stage.num}</span>
                 <div className="h-px w-6" style={{ background: stage.color, opacity: 0.35 }} />
-                <span className="text-[10px] tracking-[0.25em] uppercase text-white/20" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{stage.sub}</span>
+                <span className="text-[10px] tracking-[0.25em] uppercase" style={{ color: "rgba(255,255,255,0.55)", fontFamily:"'Roboto', sans-serif" }}>{stage.sub}</span>
               </div>
 
               <h2 className="font-bold mb-3 transition-colors duration-500"
                 style={{ fontSize:"clamp(1.8rem,3.5vw,2.6rem)", lineHeight:1.05, letterSpacing:"-0.025em",
-                  color: statuses[i] === "idle" ? "rgba(255,255,255,0.14)" : "#fff" }}>
+                  color: statuses[i] === "idle" ? "rgba(255,255,255,0.65)" : "#fff" }}>
                 {stage.title}
               </h2>
 
@@ -227,10 +498,10 @@ function PipelineTab() {
                        animate={{ scale:[1,1.6,1], opacity:[1,0.3,1] }} transition={{ duration:0.8, repeat:Infinity }} /></>
                   : statuses[i] === "complete"
                   ? <CheckCircle2 className="w-3 h-3" style={{ color: stage.color }} />
-                  : <stage.Icon className="w-3 h-3 text-white/16" />}
+                  : <stage.Icon className="w-3 h-3" style={{ color: "rgba(255,255,255,0.55)" }} />}
                 <span className="text-[12px] transition-colors duration-300" style={{
-                  fontFamily:"'JetBrains Mono',monospace",
-                  color: statuses[i]==="processing" ? stage.color : statuses[i]==="complete" ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.16)",
+                  fontFamily:"'Roboto', sans-serif",
+                  color: statuses[i]==="processing" ? stage.color : statuses[i]==="complete" ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.55)",
                 }}>
                   {statuses[i]==="idle" ? stage.idle : statuses[i]==="processing" ? stage.running : stage.done}
                 </span>
@@ -239,15 +510,15 @@ function PipelineTab() {
               {/* ── Stage 0: input ── */}
               {i === 0 && (
                 <div className="space-y-4">
-                  <div className="flex gap-2 flex-wrap">
-                    {SAMPLES.map((s,si) => (
-                      <button key={si} onClick={() => setInput(s.text)} disabled={isRunning}
-                        className="text-[11px] px-3 py-1.5 rounded-lg transition-all disabled:opacity-30"
-                        style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.45)", fontFamily:"'JetBrains Mono',monospace" }}>
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
+                  {phoneLive && (
+                    <div className="flex items-center gap-2 text-[11px] px-3 py-1.5 rounded-lg w-fit"
+                      style={{ background:"#00f5ff11", border:"1px solid #00f5ff44", color:"#00f5ff", fontFamily:"'Roboto', sans-serif" }}>
+                      <Phone className="w-3 h-3" />
+                      <span>LIVE CALL — {phoneLive.from}</span>
+                      <motion.span className="w-1.5 h-1.5 rounded-full bg-current"
+                        animate={{ opacity:[1,0.2,1] }} transition={{ duration:1.2, repeat:Infinity }} />
+                    </div>
+                  )}
                   <textarea value={input} onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key==="Enter"&&!e.shiftKey){e.preventDefault();run();} }}
                     disabled={isRunning} rows={5}
@@ -255,15 +526,20 @@ function PipelineTab() {
                     className="w-full rounded-2xl text-[13px] resize-none outline-none transition-all duration-300 leading-relaxed"
                     style={{ background:"rgba(255,255,255,0.04)",
                       border:`1px solid ${statuses[0]==="processing" ? stage.color+"55" : "rgba(255,255,255,0.08)"}`,
-                      padding:"15px 17px", color:"rgba(255,255,255,0.75)", fontFamily:"'JetBrains Mono',monospace",
+                      padding:"15px 17px", color:"rgba(255,255,255,0.75)", fontFamily:"'Roboto', sans-serif",
                       boxShadow: statuses[0]==="processing" ? `0 0 40px ${stage.color}18,inset 0 0 24px ${stage.color}08` : "none" }} />
                   <div className="flex gap-3 items-center flex-wrap">
                     <select value={lang} onChange={e => setLang(e.target.value)} disabled={isRunning}
                       className="rounded-xl text-[12px] outline-none"
-                      style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", padding:"11px 13px", color:"rgba(255,255,255,0.6)", fontFamily:"'JetBrains Mono',monospace" }}>
-                      <option value="hi">Hindi</option><option value="mr">Marathi</option>
-                      <option value="kn">Kannada</option><option value="ta">Tamil</option>
+                      style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", padding:"11px 13px", color:"rgba(255,255,255,0.6)", fontFamily:"'Roboto', sans-serif" }}>
+                      <option value="hi">Hindi</option>
                       <option value="en">English</option>
+                      <option value="mr">Marathi</option>
+                      <option value="gu">Gujarati</option>
+                      <option value="bn">Bengali</option>
+                      <option value="ta">Tamil</option>
+                      <option value="te">Telugu</option>
+                      <option value="kn">Kannada</option>
                     </select>
                     <button onClick={run} disabled={!input.trim()||isRunning}
                       className="flex items-center gap-2 rounded-xl text-[13px] font-bold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
@@ -271,11 +547,11 @@ function PipelineTab() {
                         boxShadow: input.trim()&&!isRunning ? `0 0 28px ${stage.color}66,0 0 56px ${stage.color}28` : "none" }}>
                       <Send className="w-3.5 h-3.5" /> Run Pipeline
                     </button>
-                    {error && <span className="text-[12px] text-red-400 px-3 py-2 rounded-xl" style={{ background:"#ff000011", border:"1px solid #ff000033", fontFamily:"'JetBrains Mono',monospace" }}>{error}</span>}
+                    {error && <span className="text-[12px] text-red-400 px-3 py-2 rounded-xl" style={{ background:"#ff000011", border:"1px solid #ff000033", fontFamily:"'Roboto', sans-serif" }}>{error}</span>}
                     {allDone && (
                       <motion.button initial={{opacity:0,x:-6}} animate={{opacity:1,x:0}} onClick={reset}
                         className="flex items-center gap-2 rounded-xl text-[13px]"
-                        style={{ border:"1px solid rgba(255,255,255,0.1)", padding:"11px 22px", color:"rgba(255,255,255,0.38)", fontFamily:"'JetBrains Mono',monospace" }}>
+                        style={{ border:"1px solid rgba(255,255,255,0.1)", padding:"11px 22px", color:"rgba(255,255,255,0.38)", fontFamily:"'Roboto', sans-serif" }}>
                         <RotateCcw className="w-3.5 h-3.5" /> Reset
                       </motion.button>
                     )}
@@ -330,11 +606,11 @@ function ProfileCard({ profile, color, timings, fingerprint }: { profile: Profil
     <motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} transition={{duration:0.45}}
       className="mt-6 rounded-2xl overflow-hidden"
       style={{ border:`1px solid ${color}28`, background:`${color}07`, boxShadow:`0 0 24px ${color}10` }}>
-      <div className="px-5 pt-4 pb-1 text-[9px] tracking-[0.42em] uppercase" style={{ color, fontFamily:"'JetBrains Mono',monospace" }}>EXTRACTED PROFILE</div>
+      <div className="px-5 pt-4 pb-1 text-[9px] tracking-[0.42em] uppercase" style={{ color, fontFamily:"'Roboto', sans-serif" }}>EXTRACTED PROFILE</div>
       <div className="px-5 pb-4 space-y-2 mt-1">
         {rows.map(([k,v]) => (
           <div key={k} className="flex gap-3 text-[13px]">
-            <span className="text-white/30 min-w-[110px]" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{k}</span>
+            <span className="text-white/30 min-w-[110px]" style={{ fontFamily:"'Roboto', sans-serif" }}>{k}</span>
             <span className="text-white/75 leading-snug">{v}</span>
           </div>
         ))}
@@ -346,13 +622,13 @@ function ProfileCard({ profile, color, timings, fingerprint }: { profile: Profil
             initial={{opacity:0, scale:0.75}} animate={{opacity:1, scale:1}}
             transition={{delay: 0.2 + ti * 0.1, duration:0.22, type:"spring", stiffness:280}}
             className="px-3 py-1 rounded-full text-[11px] font-semibold"
-            style={{ background:`${color}16`, border:`1px solid ${color}45`, color, fontFamily:"'JetBrains Mono',monospace",
+            style={{ background:`${color}16`, border:`1px solid ${color}45`, color, fontFamily:"'Roboto', sans-serif",
               boxShadow:`0 0 10px ${color}18` }}>
             {tag}
           </motion.span>
         ))}
       </div>
-      <div className="px-5 py-2.5 border-t text-[10px] text-white/20 flex gap-4" style={{ borderColor:`${color}18`, fontFamily:"'JetBrains Mono',monospace" }}>
+      <div className="px-5 py-2.5 border-t text-[10px] text-white/20 flex gap-4" style={{ borderColor:`${color}18`, fontFamily:"'Roboto', sans-serif" }}>
         <span>trace {fingerprint}</span>
         <span>{Math.round(total)}ms</span>
       </div>
@@ -380,11 +656,11 @@ function RulesPanel({ steps, color }: { steps: PipelineStep[]; color: string }) 
         <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color }} />
         <div className="flex-1 min-w-0">
           <div className="text-[12px] font-bold text-white/88 leading-snug">PM Mudra Yojana — Eligibility Circular, RBI 2024</div>
-          <div className="text-[10px] text-white/35 mt-0.5" style={{ fontFamily:"'JetBrains Mono',monospace" }}>RBI/2024/PMMY/14 · Govt. of India</div>
+          <div className="text-[10px] text-white/35 mt-0.5" style={{ fontFamily:"'Roboto', sans-serif" }}>RBI/2024/PMMY/14 · Govt. of India</div>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full flex-shrink-0" style={{ background:"#00ff9412", border:"1px solid #00ff9435" }}>
           <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-          <span className="text-[10px] text-emerald-400 font-semibold" style={{ fontFamily:"'JetBrains Mono',monospace" }}>Verified</span>
+          <span className="text-[10px] text-emerald-400 font-semibold" style={{ fontFamily:"'Roboto', sans-serif" }}>Verified</span>
         </div>
       </div>
 
@@ -403,10 +679,10 @@ function RulesPanel({ steps, color }: { steps: PipelineStep[]; color: string }) 
               onClick={()=>setExpanded(p=>({...p,[scheme.label]:!p[scheme.label]}))}>
               <div className="text-left">
                 <div className="text-[12px] font-bold text-white/85 leading-snug">{scheme.label}</div>
-                <div className="text-[10px] text-white/30 mt-0.5" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{scheme.detail}</div>
+                <div className="text-[10px] text-white/30 mt-0.5" style={{ fontFamily:"'Roboto', sans-serif" }}>{scheme.detail}</div>
               </div>
               <div className="flex items-center gap-2.5 flex-shrink-0 ml-3">
-                <div className="flex gap-1.5 text-[10px]" style={{ fontFamily:"'JetBrains Mono',monospace" }}>
+                <div className="flex gap-1.5 text-[10px]" style={{ fontFamily:"'Roboto', sans-serif" }}>
                   {pass>0&&<span className="px-2 py-0.5 rounded-full text-emerald-400" style={{ background:"#00ff9418" }}>✓ {pass}</span>}
                   {fail>0&&<span className="px-2 py-0.5 rounded-full text-red-400" style={{ background:"#ff000018" }}>✗ {fail}</span>}
                   {unkn>0&&<span className="px-2 py-0.5 rounded-full text-amber-400" style={{ background:"#f5a62318" }}>? {unkn}</span>}
@@ -428,7 +704,7 @@ function RulesPanel({ steps, color }: { steps: PipelineStep[]; color: string }) 
                         </span>
                         <div>
                           <div className="text-white/80 leading-snug">{rule.label}</div>
-                          <div className="text-white/30 mt-1" style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"0.63rem" }}>{rule.citation}</div>
+                          <div className="text-white/30 mt-1" style={{ fontFamily:"'Roboto', sans-serif", fontSize:"0.63rem" }}>{rule.citation}</div>
                           {rule.quote && <div className="mt-1.5 text-white/40 italic text-[11px] leading-relaxed">"{rule.quote.slice(0,140)}{rule.quote.length>140?"…":""}"</div>}
                         </div>
                       </div>
@@ -458,7 +734,7 @@ function OutcomePanel({ result, color }: { result: ReasonResponse; color: string
         <motion.div key={i} initial={{opacity:0,scale:0.97}} animate={{opacity:1,scale:1}} transition={{delay:i*0.08}}
           className="rounded-2xl p-5"
           style={{ border:"1px solid #00ff9440", background:"#00ff9409", boxShadow:"0 0 28px #00ff9412" }}>
-          <div className="text-[9px] tracking-[0.42em] uppercase text-emerald-400 mb-2" style={{ fontFamily:"'JetBrains Mono',monospace" }}>ELIGIBLE NOW</div>
+          <div className="text-[9px] tracking-[0.42em] uppercase text-emerald-400 mb-2" style={{ fontFamily:"'Roboto', sans-serif" }}>ELIGIBLE NOW</div>
           <div className="text-[16px] font-bold text-white/92 mb-1.5 leading-snug">{d.scheme_name}</div>
           <div className="text-[13px] text-white/50 mb-3 leading-relaxed">{d.benefit_summary}</div>
           {d.benefit_amount_rupees && <div className="text-[30px] font-bold text-emerald-400">₹{d.benefit_amount_rupees.toLocaleString()}</div>}
@@ -469,9 +745,9 @@ function OutcomePanel({ result, color }: { result: ReasonResponse; color: string
       {ladders.map((lb, li) => (
         <div key={li} className="rounded-2xl overflow-hidden" style={{ border:`1px solid ${color}30`, background:`${color}08` }}>
           <div className="px-5 pt-4 pb-3">
-            <div className="text-[9px] tracking-[0.38em] uppercase mb-2" style={{ color, fontFamily:"'JetBrains Mono',monospace" }}>PATH EXISTS</div>
+            <div className="text-[9px] tracking-[0.38em] uppercase mb-2" style={{ color, fontFamily:"'Roboto', sans-serif" }}>PATH EXISTS</div>
             <div className="text-[15px] font-bold text-white/90 mb-1 leading-snug">{lb.scheme}</div>
-            <div className="text-[11px] text-white/35" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{lb.detail}</div>
+            <div className="text-[11px] text-white/35" style={{ fontFamily:"'Roboto', sans-serif" }}>{lb.detail}</div>
           </div>
           <div className="px-5 pb-5 space-y-2.5">
             {lb.steps.map((step, si) => (
@@ -481,7 +757,7 @@ function OutcomePanel({ result, color }: { result: ReasonResponse; color: string
                   style={{ background:color, color:"#000" }}>{step.order}</div>
                 <div>
                   <div className="text-[13px] font-semibold text-white/88 leading-snug">{step.action}</div>
-                  <div className="text-[10px] text-white/35 mt-0.5" style={{ fontFamily:"'JetBrains Mono',monospace" }}>
+                  <div className="text-[10px] text-white/35 mt-0.5" style={{ fontFamily:"'Roboto', sans-serif" }}>
                     {step.cost_rupees===0?"free":`₹${step.cost_rupees}`} · {step.time_days} days{step.where?` · ${step.where}`:""}
                   </div>
                   {step.detail && <div className="text-[12px] text-white/50 mt-1 leading-relaxed">{step.detail}</div>}
@@ -494,8 +770,8 @@ function OutcomePanel({ result, color }: { result: ReasonResponse; color: string
 
       {/* spoken answer */}
       <div className="rounded-2xl p-5" style={{ border:`1px solid ${color}40`, background:`${color}0b`, boxShadow:`0 0 32px ${color}12` }}>
-        <div className="text-[9px] tracking-[0.42em] uppercase mb-1" style={{ color, fontFamily:"'JetBrains Mono',monospace" }}>WHAT HE HEARS</div>
-        <div className="text-[10px] text-white/28 mb-4" style={{ fontFamily:"'JetBrains Mono',monospace" }}>He has no screen. This is the entire product from his side.</div>
+        <div className="text-[9px] tracking-[0.42em] uppercase mb-1" style={{ color, fontFamily:"'Roboto', sans-serif" }}>WHAT HE HEARS</div>
+        <div className="text-[10px] text-white/28 mb-4" style={{ fontFamily:"'Roboto', sans-serif" }}>He has no screen. This is the entire product from his side.</div>
 
         {/* waveform + speaker */}
         <div className="flex items-center gap-3 mb-4">
@@ -510,7 +786,7 @@ function OutcomePanel({ result, color }: { result: ReasonResponse; color: string
 
         {audioSrc
           ? <audio controls autoPlay src={audioSrc} className="w-full mb-5" style={{ filter:"invert(0.9) hue-rotate(180deg)", borderRadius:8 }} />
-          : <div className="text-[11px] text-amber-400/70 mb-5" style={{ fontFamily:"'JetBrains Mono',monospace" }}>⚠ No audio — TTS unavailable. Text shown above.</div>
+          : <div className="text-[11px] text-amber-400/70 mb-5" style={{ fontFamily:"'Roboto', sans-serif" }}>⚠ No audio — TTS unavailable. Text shown above.</div>
         }
 
         {/* IVR keypad */}
@@ -529,7 +805,7 @@ function IVRKeypad({ color }: { color: string }) {
   ];
   return (
     <div className="rounded-xl overflow-hidden" style={{ border:`1px solid ${color}25`, background:"rgba(0,0,0,0.3)" }}>
-      <div className="px-4 pt-3 pb-2 text-[9px] tracking-[0.38em] uppercase text-white/25" style={{ fontFamily:"'JetBrains Mono',monospace" }}>
+      <div className="px-4 pt-3 pb-2 text-[9px] tracking-[0.38em] uppercase text-white/25" style={{ fontFamily:"'Roboto', sans-serif" }}>
         IVR KEYPAD — press after hearing the answer
       </div>
       <div className="flex">
@@ -537,12 +813,12 @@ function IVRKeypad({ color }: { color: string }) {
           <div key={key} className="flex-1 flex flex-col items-center gap-1.5 py-3 px-2"
             style={{ borderLeft: ki > 0 ? `1px solid ${color}15` : "none" }}>
             <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[16px]"
-              style={{ background:`${color}18`, border:`1px solid ${color}45`, color, fontFamily:"'JetBrains Mono',monospace",
+              style={{ background:`${color}18`, border:`1px solid ${color}45`, color, fontFamily:"'Roboto', sans-serif",
                 boxShadow:`0 0 12px ${color}20` }}>
               {key}
             </div>
             <div className="text-white/45">{icon}</div>
-            <div className="text-[9px] text-center text-white/35 leading-tight" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{label}</div>
+            <div className="text-[9px] text-center text-white/35 leading-tight" style={{ fontFamily:"'Roboto', sans-serif" }}>{label}</div>
           </div>
         ))}
       </div>
@@ -594,7 +870,7 @@ function DocDoctorTab() {
     <div className="h-full overflow-y-auto px-10 py-8" style={{ scrollbarWidth:"none" }}>
       <div style={{ maxWidth:700, margin:"0 auto" }}>
         <div className="flex items-center gap-3 mb-2">
-          <span className="text-[10px] tracking-[0.38em] uppercase" style={{ color:C, fontFamily:"'JetBrains Mono',monospace" }}>DOC DOCTOR</span>
+          <span className="text-[10px] tracking-[0.38em] uppercase" style={{ color:C, fontFamily:"'Roboto', sans-serif" }}>DOC DOCTOR</span>
         </div>
         <h2 className="text-[2.1rem] font-bold text-white/90 mb-2" style={{ letterSpacing:"-0.02em" }}>Check before you apply</h2>
         <p className="text-[13px] text-white/40 mb-8 leading-relaxed">
@@ -609,7 +885,7 @@ function DocDoctorTab() {
             boxShadow: files.length>0?`0 0 32px ${C}10`:"none" }}>
           <Upload className="w-7 h-7 mx-auto mb-3 text-white/30" />
           <div className="text-[14px] text-white/55">Click to upload document photos</div>
-          <div className="text-[11px] text-white/25 mt-1.5" style={{ fontFamily:"'JetBrains Mono',monospace" }}>JPG · PNG · PDF — name as aadhaar.jpg, passbook.jpg etc.</div>
+          <div className="text-[11px] text-white/25 mt-1.5" style={{ fontFamily:"'Roboto', sans-serif" }}>JPG · PNG · PDF — name as aadhaar.jpg, passbook.jpg etc.</div>
           <input ref={inputRef} type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden"
             onChange={e => setFiles(Array.from(e.target.files ?? []))} />
         </div>
@@ -618,7 +894,7 @@ function DocDoctorTab() {
           <div className="flex flex-wrap gap-2 mb-5">
             {files.map((f,i) => (
               <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl text-[12px]"
-                style={{ background:`${C}12`, border:`1px solid ${C}30`, color:C, fontFamily:"'JetBrains Mono',monospace" }}>
+                style={{ background:`${C}12`, border:`1px solid ${C}30`, color:C, fontFamily:"'Roboto', sans-serif" }}>
                 <FileText className="w-3 h-3" />{f.name}
               </div>
             ))}
@@ -631,9 +907,9 @@ function DocDoctorTab() {
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
           {loading ? "Reading documents…" : "Run check"}
         </button>
-        {files.length===1&&<div className="text-[12px] text-white/30 mb-4" style={{ fontFamily:"'JetBrains Mono',monospace" }}>Add one more document — the check is a comparison.</div>}
+        {files.length===1&&<div className="text-[12px] text-white/30 mb-4" style={{ fontFamily:"'Roboto', sans-serif" }}>Add one more document — the check is a comparison.</div>}
 
-        {error && <div className="rounded-xl p-4 mb-4 text-[12px] text-red-400" style={{ background:"#ff000011", border:"1px solid #ff000033", fontFamily:"'JetBrains Mono',monospace" }}>{error}</div>}
+        {error && <div className="rounded-xl p-4 mb-4 text-[12px] text-red-400" style={{ background:"#ff000011", border:"1px solid #ff000033", fontFamily:"'Roboto', sans-serif" }}>{error}</div>}
 
         {report && (
           <motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}}>
@@ -642,7 +918,7 @@ function DocDoctorTab() {
               {report.clear ? <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" /> : <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />}
               <div>
                 <div className={`text-[14px] font-bold ${report.clear?"text-emerald-400":"text-red-400"}`}>{report.summary}</div>
-                {!report.reading_is_reliable && <div className="text-[11px] text-amber-400/70 mt-0.5" style={{ fontFamily:"'JetBrains Mono',monospace" }}>⚠ OCR used as fallback — readings may be less accurate</div>}
+                {!report.reading_is_reliable && <div className="text-[11px] text-amber-400/70 mt-0.5" style={{ fontFamily:"'Roboto', sans-serif" }}>⚠ OCR used as fallback — readings may be less accurate</div>}
               </div>
             </div>
 
@@ -657,7 +933,7 @@ function DocDoctorTab() {
                   <div className="ml-7 flex flex-wrap gap-2 mb-2">
                     {Object.entries(f.values).map(([doc,name]) => (
                       <div key={doc} className="px-3 py-1.5 rounded-lg text-[11px]"
-                        style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", fontFamily:"'JetBrains Mono',monospace" }}>
+                        style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", fontFamily:"'Roboto', sans-serif" }}>
                         <span className="text-white/35">{doc}: </span><span className="text-white/75">{name}</span>
                       </div>
                     ))}
@@ -669,14 +945,14 @@ function DocDoctorTab() {
             ))}
 
             <div className="rounded-2xl overflow-hidden" style={{ border:"1px solid rgba(255,255,255,0.08)" }}>
-              <div className="px-5 py-3 text-[9px] tracking-[0.38em] uppercase text-white/25 border-b border-white/05" style={{ fontFamily:"'JetBrains Mono',monospace" }}>WHAT WE READ OFF EACH DOCUMENT</div>
+              <div className="px-5 py-3 text-[9px] tracking-[0.38em] uppercase text-white/25 border-b border-white/05" style={{ fontFamily:"'Roboto', sans-serif" }}>WHAT WE READ OFF EACH DOCUMENT</div>
               <div className="divide-y divide-white/05">
                 {report.documents.map((d,i) => (
                   <div key={i} className="px-5 py-3.5 flex gap-4 flex-wrap text-[12px]">
                     <span className="text-white/60 font-bold min-w-[130px]">{d.label}</span>
-                    <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"rgba(255,255,255,0.5)" }}>{d.name ?? "—"}</span>
-                    {d.dob && <span className="text-white/30" style={{ fontFamily:"'JetBrains Mono',monospace" }}>DOB {d.dob}</span>}
-                    <span className="text-white/20 ml-auto" style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:"0.62rem" }}>{d.extraction_method}</span>
+                    <span style={{ fontFamily:"'Roboto', sans-serif", color:"rgba(255,255,255,0.5)" }}>{d.name ?? "—"}</span>
+                    {d.dob && <span className="text-white/30" style={{ fontFamily:"'Roboto', sans-serif" }}>DOB {d.dob}</span>}
+                    <span className="text-white/20 ml-auto" style={{ fontFamily:"'Roboto', sans-serif", fontSize:"0.62rem" }}>{d.extraction_method}</span>
                   </div>
                 ))}
               </div>
@@ -743,7 +1019,7 @@ function LedgerTab() {
     <div className="h-full overflow-y-auto px-10 py-8" style={{ scrollbarWidth:"none" }}>
       <div style={{ maxWidth:740, margin:"0 auto" }}>
         <div className="flex items-center gap-3 mb-2">
-          <span className="text-[10px] tracking-[0.38em] uppercase" style={{ color:C, fontFamily:"'JetBrains Mono',monospace" }}>VOICE LEDGER</span>
+          <span className="text-[10px] tracking-[0.38em] uppercase" style={{ color:C, fontFamily:"'Roboto', sans-serif" }}>VOICE LEDGER</span>
         </div>
         <h2 className="text-[2.1rem] font-bold text-white/90 mb-2" style={{ letterSpacing:"-0.02em" }}>Trust Passport</h2>
         <p className="text-[13px] text-white/40 mb-7 leading-relaxed">
@@ -753,7 +1029,7 @@ function LedgerTab() {
         <div className="flex gap-3 flex-wrap mb-6">
           <input value={userId} onChange={e => setUserId(e.target.value)}
             className="rounded-xl text-[12px] outline-none px-3 py-2.5"
-            style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.6)", fontFamily:"'JetBrains Mono',monospace", width:150 }}
+            style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.6)", fontFamily:"'Roboto', sans-serif", width:150 }}
             placeholder="user_id" />
           <button onClick={()=>fetchStatement()} disabled={loading}
             className="flex items-center gap-2 rounded-xl text-[12px] font-bold transition-all disabled:opacity-40"
@@ -770,23 +1046,23 @@ function LedgerTab() {
         </div>
 
         <div className="rounded-2xl p-5 mb-6" style={{ border:`1px solid ${C}20`, background:`${C}07` }}>
-          <div className="text-[9px] tracking-[0.38em] uppercase mb-3" style={{ color:C, fontFamily:"'JetBrains Mono',monospace" }}>ADD TODAY'S ENTRY</div>
+          <div className="text-[9px] tracking-[0.38em] uppercase mb-3" style={{ color:C, fontFamily:"'Roboto', sans-serif" }}>ADD TODAY'S ENTRY</div>
           <div className="flex gap-3">
             <input value={entry} onChange={e=>setEntry(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter")postEntry();}}
               placeholder="aaj aath sau ka kaam hua, do sau ka maal liya"
               className="flex-1 rounded-xl text-[12px] outline-none px-3 py-2.5"
-              style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.65)", fontFamily:"'JetBrains Mono',monospace" }} />
+              style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.65)", fontFamily:"'Roboto', sans-serif" }} />
             <button onClick={postEntry} disabled={!entry.trim()||posting}
               className="rounded-xl px-4 text-[12px] font-bold disabled:opacity-30"
               style={{ background:C, color:"#000" }}>
               {posting ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
             </button>
           </div>
-          {postMsg && <div className="mt-2.5 text-[11px] text-emerald-400" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{postMsg}</div>}
+          {postMsg && <div className="mt-2.5 text-[11px] text-emerald-400" style={{ fontFamily:"'Roboto', sans-serif" }}>{postMsg}</div>}
         </div>
 
-        {error && <div className="rounded-xl p-3 mb-4 text-[12px] text-red-400" style={{ background:"#ff000011", border:"1px solid #ff000033", fontFamily:"'JetBrains Mono',monospace" }}>{error}</div>}
+        {error && <div className="rounded-xl p-3 mb-4 text-[12px] text-red-400" style={{ background:"#ff000011", border:"1px solid #ff000033", fontFamily:"'Roboto', sans-serif" }}>{error}</div>}
 
         {statement && (
           <motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} className="space-y-5">
@@ -798,7 +1074,7 @@ function LedgerTab() {
               ].map(([k,v]) => (
                 <div key={k} className="rounded-2xl p-5 text-center" style={{ border:`1px solid ${C}28`, background:`${C}0a` }}>
                   <div className="text-[26px] font-bold" style={{ color:C }}>{v}</div>
-                  <div className="text-[10px] text-white/30 mt-1" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{k}</div>
+                  <div className="text-[10px] text-white/30 mt-1" style={{ fontFamily:"'Roboto', sans-serif" }}>{k}</div>
                 </div>
               ))}
             </div>
@@ -812,7 +1088,7 @@ function LedgerTab() {
                   ["Confidence",   statement.confidence.toUpperCase()],
                 ].map(([k,v]) => (
                   <div key={k}>
-                    <div className="text-white/25 text-[9px] tracking-widest uppercase" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{k}</div>
+                    <div className="text-white/25 text-[9px] tracking-widest uppercase" style={{ fontFamily:"'Roboto', sans-serif" }}>{k}</div>
                     <div className={`mt-0.5 font-semibold ${k==="Confidence"&&statement.confidence==="strong"?"text-emerald-400":k==="Confidence"&&statement.confidence==="indicative"?"text-amber-400":"text-white/70"}`}>{v}</div>
                   </div>
                 ))}
@@ -824,7 +1100,7 @@ function LedgerTab() {
 
             {statement.daily.length > 0 && (
               <div className="rounded-2xl p-5" style={{ border:`1px solid ${C}20`, background:`${C}07` }}>
-                <div className="text-[9px] tracking-[0.38em] uppercase mb-5" style={{ color:C, fontFamily:"'JetBrains Mono',monospace" }}>DAILY EARNINGS — {statement.daily.length} days</div>
+                <div className="text-[9px] tracking-[0.38em] uppercase mb-5" style={{ color:C, fontFamily:"'Roboto', sans-serif" }}>DAILY EARNINGS — {statement.daily.length} days</div>
                 <div className="flex items-end gap-1" style={{ height:90 }}>
                   {statement.daily.map((day,i) => (
                     <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative" style={{ minWidth:0 }}>
@@ -833,13 +1109,13 @@ function LedgerTab() {
                           background: day.corroborated?`${C}cc`:`${C}55`,
                           border: day.corroborated?`1px solid ${C}`:"none" }} />
                       <div className="absolute bottom-full mb-1 text-[9px] rounded px-1.5 py-0.5 opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10"
-                        style={{ background:"rgba(0,0,0,0.9)", border:`1px solid ${C}30`, color:"rgba(255,255,255,0.8)", fontFamily:"'JetBrains Mono',monospace" }}>
+                        style={{ background:"rgba(0,0,0,0.9)", border:`1px solid ${C}30`, color:"rgba(255,255,255,0.8)", fontFamily:"'Roboto', sans-serif" }}>
                         {day.date}<br/>₹{day.earned.toLocaleString()}{day.spent?` · spent ₹${day.spent.toLocaleString()}`:""}{day.corroborated?" · UPI ✓":""}
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-between mt-2 text-[9px] text-white/20" style={{ fontFamily:"'JetBrains Mono',monospace" }}>
+                <div className="flex justify-between mt-2 text-[9px] text-white/20" style={{ fontFamily:"'Roboto', sans-serif" }}>
                   <span>{statement.period_start}</span><span style={{ color:`${C}99` }}>■ UPI corroborated</span><span>{statement.period_end}</span>
                 </div>
               </div>
@@ -877,19 +1153,16 @@ function NeonPanel({ statuses, active, prog }: { statuses: Status[]; active: num
           <filter id="f-xl" x="-120%" y="-20%" width="340%" height="140%"><feGaussianBlur stdDeviation="13" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           <filter id="f-md" x="-60%" y="-10%" width="220%" height="120%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
-        {/* ghost traces for all 5 paths */}
-        {PATHS.map((d,i)=>(<path key={`ghost-${i}`} d={d} fill="none" stroke={STAGES[Math.min(i,2)].color} strokeWidth={0.8} opacity={0.06}/>))}
-        {/* main 3 active neon paths */}
+        {/* faint ghost traces of the 3 primary paths (only) */}
+        {PATHS.slice(0,3).map((d,i)=>(<path key={`ghost-${i}`} d={d} fill="none" stroke={STAGES[i].color} strokeWidth={0.8} opacity={0.06}/>))}
+        {/* main 3 active neon paths — one per stage, always full-length when drawn */}
         {PATHS.slice(0,3).map((d,i)=>(<NeonPath key={i} d={d} color={STAGES[i].color} progress={prog[i]} isProcessing={statuses[i]==="processing"}/>))}
-        {/* 2 extra ambient streaks */}
-        <NeonPath d={PATHS[3]} color={STAGES[0].color} progress={prog[0]*0.55} isProcessing={false} />
-        <NeonPath d={PATHS[4]} color={STAGES[2].color} progress={prog[2]*0.45} isProcessing={false} />
       </svg>
       <div className="absolute right-5 inset-y-0 flex flex-col justify-around py-20 pointer-events-none">
         {STAGES.map((s,i)=>(
           <div key={i} className="text-right transition-all duration-500" style={{ opacity: statuses[i]==="idle"?0.12:1 }}>
-            <div className="text-[9px] tracking-[0.32em] uppercase mb-0.5" style={{ color:s.color, fontFamily:"'JetBrains Mono',monospace" }}>{s.num}</div>
-            <div className="text-[10px] text-white/35" style={{ fontFamily:"'JetBrains Mono',monospace" }}>{s.sub}</div>
+            <div className="text-[9px] tracking-[0.32em] uppercase mb-0.5" style={{ color:s.color, fontFamily:"'Roboto', sans-serif" }}>{s.num}</div>
+            <div className="text-[10px] text-white/35" style={{ fontFamily:"'Roboto', sans-serif" }}>{s.sub}</div>
           </div>
         ))}
       </div>
@@ -899,21 +1172,22 @@ function NeonPanel({ statuses, active, prog }: { statuses: Status[]; active: num
 
 function NeonPath({ d, color, progress, isProcessing }: { d:string; color:string; progress:number; isProcessing:boolean }) {
   const pt = { duration:1.8, ease:"easeOut" as const };
-  const pulse = { repeat:Infinity, duration:1.8, ease:"easeInOut" as const };
+  const pulse = { repeat:Infinity, duration:1.4, ease:"easeInOut" as const };
   return (
     <>
-      <motion.path d={d} fill="none" stroke={color} strokeWidth={32} strokeLinecap="round" filter="url(#f-xl)"
+      {/* strokes bumped 1.3x: 32→42, 7→9, 1.5→2 */}
+      <motion.path d={d} fill="none" stroke={color} strokeWidth={42} strokeLinecap="round" filter="url(#f-xl)"
         initial={{ pathLength:0, opacity:0 }}
-        animate={{ pathLength:progress, opacity: isProcessing?[0.12,0.40,0.12]:progress>0?0.22:0 }}
+        animate={{ pathLength:progress, opacity: isProcessing?[0.15,0.55,0.15]:progress>0?0.22:0 }}
         transition={{ pathLength:pt, opacity: isProcessing?pulse:{duration:0.7} }} />
-      <motion.path d={d} fill="none" stroke={color} strokeWidth={7} strokeLinecap="round" filter="url(#f-md)"
+      <motion.path d={d} fill="none" stroke={color} strokeWidth={9} strokeLinecap="round" filter="url(#f-md)"
         initial={{ pathLength:0, opacity:0 }}
-        animate={{ pathLength:progress, opacity: isProcessing?[0.45,0.95,0.45]:progress>0?0.65:0 }}
+        animate={{ pathLength:progress, opacity: isProcessing?[0.4,1,0.4]:progress>0?0.65:0 }}
         transition={{ pathLength:pt, opacity: isProcessing?pulse:{duration:0.6} }} />
-      <motion.path d={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round"
+      <motion.path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round"
         initial={{ pathLength:0, opacity:0 }}
-        animate={{ pathLength:progress, opacity: isProcessing?[0.8,1,0.8]:progress>0?1:0 }}
-        transition={{ pathLength:pt, opacity: isProcessing?{...pulse,duration:1.8}:{duration:0.3} }} />
+        animate={{ pathLength:progress, opacity: isProcessing?[0.75,1,0.75]:progress>0?1:0 }}
+        transition={{ pathLength:pt, opacity: isProcessing?pulse:{duration:0.3} }} />
     </>
   );
 }
