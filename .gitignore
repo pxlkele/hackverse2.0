@@ -30,3 +30,6 @@ dist/
 # Console build output and deps
 apps/console/node_modules/
 apps/console/dist/
+services/api/data/narration_cache/
+services/api/data/profile_cache/
+services/api/data/voice_cache/
