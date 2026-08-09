@@ -38,11 +38,21 @@
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; }
   .brand img { width: 30px; height: 30px; border-radius: 7px; }
 
-  .lang { display: flex; gap: 6px; }
+  /* Eight languages will not fit across a cheap phone, so the row scrolls
+     sideways rather than wrapping and pushing the talk button off screen. Each
+     chip is labelled in its OWN script — someone who cannot read Devanagari can
+     still find "ಕನ್ನಡ", and that recognition is the whole point. */
+  .lang {
+    display: flex; gap: 6px; overflow-x: auto; max-width: 62%;
+    scrollbar-width: none; -ms-overflow-style: none;
+    scroll-snap-type: x proximity;
+  }
+  .lang::-webkit-scrollbar { display: none; }
   .lang button {
-    min-width: 60px; min-height: 44px; border-radius: 10px; font-size: 16px;
+    flex: none; min-width: 60px; min-height: 44px; padding: 0 12px;
+    border-radius: 10px; font-size: 16px; scroll-snap-align: end;
     font-weight: 700; border: 2px solid var(--line); background: transparent;
-    color: var(--muted); font-family: inherit;
+    color: var(--muted); font-family: inherit; white-space: nowrap;
   }
   .lang button[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: #fff; }
 
@@ -117,10 +127,8 @@
 
 <header>
   <div class="brand"><img src="icon-192.png" alt=""> Setu</div>
-  <div class="lang">
-    <button id="langHi" aria-pressed="true">हिं</button>
-    <button id="langEn" aria-pressed="false">EN</button>
-  </div>
+  <!-- Built from T at load: one list of languages, not two that drift apart. -->
+  <div class="lang" id="langRow"></div>
 </header>
 
 <main>
@@ -152,14 +160,46 @@
 
 <script>
 const T = {
-  hi: { prompt:'अपने बारे में बताइए', talk:'बोलिए', stop:'रोकिए', listening:'सुन रहे हैं…',
+  hi: { label:'हिं', tag:'hi-IN',
+        prompt:'अपने बारे में बताइए', talk:'बोलिए', stop:'रोकिए', listening:'सुन रहे हैं…',
         thinking:'सरकारी नियम देख रहे हैं…', replay:'फिर से सुनिए', human:'किसी व्यक्ति से बात करें',
         err:'दोबारा कोशिश कीजिए', free:'मुफ़्त', days:'दिन', steps:'कदम',
         denied:'माइक की इजाज़त दीजिए', insecure:'यह पेज सुरक्षित नहीं है' },
-  en: { prompt:'Tell us about your work', talk:'Speak', stop:'Stop', listening:'Listening…',
+  en: { label:'EN', tag:'en-IN',
+        prompt:'Tell us about your work', talk:'Speak', stop:'Stop', listening:'Listening…',
         thinking:'Checking government rules…', replay:'Play again', human:'Talk to a person',
         err:'Please try again', free:'free', days:'days', steps:'steps',
         denied:'Please allow the microphone', insecure:'This page needs HTTPS for the mic' },
+  mr: { label:'मराठी', tag:'mr-IN',
+        prompt:'तुमच्याबद्दल सांगा', talk:'बोला', stop:'थांबा', listening:'ऐकत आहोत…',
+        thinking:'सरकारी नियम पाहत आहोत…', replay:'पुन्हा ऐका', human:'एखाद्या व्यक्तीशी बोला',
+        err:'पुन्हा प्रयत्न करा', free:'मोफत', days:'दिवस', steps:'पायऱ्या',
+        denied:'माइकची परवानगी द्या', insecure:'हे पेज सुरक्षित नाही' },
+  gu: { label:'ગુજરાતી', tag:'gu-IN',
+        prompt:'તમારા વિશે કહો', talk:'બોલો', stop:'રોકો', listening:'સાંભળી રહ્યા છીએ…',
+        thinking:'સરકારી નિયમો જોઈ રહ્યા છીએ…', replay:'ફરી સાંભળો', human:'કોઈ વ્યક્તિ સાથે વાત કરો',
+        err:'ફરી પ્રયત્ન કરો', free:'મફત', days:'દિવસ', steps:'પગલાં',
+        denied:'માઇકની પરવાનગી આપો', insecure:'આ પેજ સુરક્ષિત નથી' },
+  bn: { label:'বাংলা', tag:'bn-IN',
+        prompt:'আপনার কথা বলুন', talk:'বলুন', stop:'থামুন', listening:'শুনছি…',
+        thinking:'সরকারি নিয়ম দেখছি…', replay:'আবার শুনুন', human:'কারও সঙ্গে কথা বলুন',
+        err:'আবার চেষ্টা করুন', free:'বিনামূল্যে', days:'দিন', steps:'ধাপ',
+        denied:'মাইকের অনুমতি দিন', insecure:'এই পেজ সুরক্ষিত নয়' },
+  ta: { label:'தமிழ்', tag:'ta-IN',
+        prompt:'உங்களைப் பற்றி சொல்லுங்கள்', talk:'பேசுங்கள்', stop:'நிற்க', listening:'கேட்கிறோம்…',
+        thinking:'அரசு விதிகளைப் பார்க்கிறோம்…', replay:'மீண்டும் கேளுங்கள்', human:'ஒருவருடன் பேசுங்கள்',
+        err:'மீண்டும் முயற்சிக்கவும்', free:'இலவசம்', days:'நாட்கள்', steps:'படிகள்',
+        denied:'மைக் அனுமதி தாருங்கள்', insecure:'இந்தப் பக்கம் பாதுகாப்பானது அல்ல' },
+  te: { label:'తెలుగు', tag:'te-IN',
+        prompt:'మీ గురించి చెప్పండి', talk:'మాట్లాడండి', stop:'ఆపండి', listening:'వింటున్నాము…',
+        thinking:'ప్రభుత్వ నియమాలు చూస్తున్నాము…', replay:'మళ్ళీ వినండి', human:'ఒక వ్యక్తితో మాట్లాడండి',
+        err:'మళ్ళీ ప్రయత్నించండి', free:'ఉచితం', days:'రోజులు', steps:'అడుగులు',
+        denied:'మైక్ అనుమతి ఇవ్వండి', insecure:'ఈ పేజీ సురక్షితం కాదు' },
+  kn: { label:'ಕನ್ನಡ', tag:'kn-IN',
+        prompt:'ನಿಮ್ಮ ಬಗ್ಗೆ ಹೇಳಿ', talk:'ಮಾತನಾಡಿ', stop:'ನಿಲ್ಲಿಸಿ', listening:'ಕೇಳುತ್ತಿದ್ದೇವೆ…',
+        thinking:'ಸರ್ಕಾರಿ ನಿಯಮಗಳನ್ನು ನೋಡುತ್ತಿದ್ದೇವೆ…', replay:'ಮತ್ತೆ ಕೇಳಿ', human:'ಒಬ್ಬ ವ್ಯಕ್ತಿಯೊಂದಿಗೆ ಮಾತನಾಡಿ',
+        err:'ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ', free:'ಉಚಿತ', days:'ದಿನಗಳು', steps:'ಹಂತಗಳು',
+        denied:'ಮೈಕ್ ಅನುಮತಿ ನೀಡಿ', insecure:'ಈ ಪುಟ ಸುರಕ್ಷಿತವಾಗಿಲ್ಲ' },
 };
 
 let lang = 'hi', callId = null, recorder = null, chunks = [], lastAudio = null;
@@ -174,15 +214,39 @@ function say(text) {
     if (!window.speechSynthesis) return;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
+    u.lang = (t().tag) || 'hi-IN';
     u.rate = 0.92;
     speechSynthesis.speak(u);
   } catch (e) { /* a missing voice must never block the tap */ }
 }
 
+/* One chip per language in T, labelled in its own script. Built here rather than
+   written into the markup so that adding a language is a single edit to T — the
+   PWA and the server's SUPPORTED_LANGUAGES were previously two hardcoded lists
+   and the second one silently offered languages the first refused. */
+function buildLangRow() {
+  const row = $('langRow');
+  row.innerHTML = '';
+  for (const code of Object.keys(T)) {
+    const b = document.createElement('button');
+    b.textContent = T[code].label;
+    b.dataset.code = code;
+    b.setAttribute('aria-pressed', String(code === lang));
+    b.setAttribute('aria-label', T[code].label);
+    b.onclick = () => {
+      lang = code;
+      callId = null;                       // new language, new session
+      applyLang();
+      say(t().prompt);                     // the new language announces itself
+    };
+    row.appendChild(b);
+  }
+}
+
 function applyLang() {
-  $('langHi').setAttribute('aria-pressed', lang === 'hi');
-  $('langEn').setAttribute('aria-pressed', lang === 'en');
+  for (const b of $('langRow').children) {
+    b.setAttribute('aria-pressed', String(b.dataset.code === lang));
+  }
   document.documentElement.lang = lang;
   $('talkLabel').textContent = t().talk;
   $('replayLabel').textContent = t().replay;
@@ -336,18 +400,11 @@ $('human').onclick = async () => {
   play(r.turn.audio_url);
 };
 
-for (const [id, code] of [['langHi','hi'], ['langEn','en']]) {
-  $(id).onclick = () => {
-    lang = code; callId = null;          // new language, new session
-    applyLang();
-    say(t().prompt);
-  };
-}
-
 const setOnline = () => document.body.classList.toggle('offline', !navigator.onLine);
 addEventListener('online', setOnline);
 addEventListener('offline', setOnline);
 setOnline();
+buildLangRow();
 applyLang();
 
 if ('serviceWorker' in navigator) {

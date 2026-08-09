@@ -12,9 +12,16 @@ returns a Turn describing what to say and what to wait for next. The browser
 front-end is one transport; a Twilio webhook would be another, calling the same
 three functions. Swapping them is a new endpoint, not a rewrite.
 
-Two languages only — Hindi and English. Half-verified Hindi in front of judges
-is worse than two languages that are right, and we cannot check Marathi or
-Tamil prompts tonight.
+Eight languages, listed in SUPPORTED_LANGUAGES — the one place that list lives.
+It started as two, on the reasoning that half-verified Hindi beats two languages
+that are right. That still holds, so nothing was added on faith: every language
+here has been put through the whole pipeline, ASR to spoken answer, and the
+transcripts are in services/api/tests/test_profile.py.
+
+The *spoken* greeting is still a Hindi/English menu, and deliberately so. It
+plays before the caller has chosen anything, and reading eight options aloud to
+someone holding a feature phone would be worse than useless. Clients with a
+screen pass their language to begin() and never hear the menu.
 """
 
 from __future__ import annotations
@@ -63,10 +70,43 @@ PROMPTS = {
             "After the beep, tell us what work you do and what you need. "
             "For example — I sell vegetables, I need a loan. Press hash when you finish."
         ),
+        "mr": (
+            "बीप नंतर सांगा, तुम्ही काय काम करता आणि तुम्हाला काय हवं आहे. "
+            "जसं — मी भाजी विकतो, मला कर्ज हवं आहे. सांगून झाल्यावर हॅश दाबा."
+        ),
+        "gu": (
+            "બીપ પછી કહો, તમે શું કામ કરો છો અને તમને શું જોઈએ છે. "
+            "જેમ કે — હું શાકભાજી વેચું છું, મને લોન જોઈએ છે. કહી લીધા પછી હેશ દબાવો."
+        ),
+        "bn": (
+            "বীপের পরে বলুন, আপনি কী কাজ করেন এবং আপনার কী দরকার। "
+            "যেমন — আমি সবজি বিক্রি করি, আমার ঋণ দরকার। বলা শেষ হলে হ্যাশ চাপুন।"
+        ),
+        "ta": (
+            "பீப் சத்தத்திற்குப் பிறகு சொல்லுங்கள், நீங்கள் என்ன வேலை செய்கிறீர்கள், "
+            "உங்களுக்கு என்ன தேவை. உதாரணமாக — நான் காய்கறி விற்கிறேன், எனக்கு கடன் வேண்டும். "
+            "சொல்லி முடித்ததும் ஹாஷ் அழுத்துங்கள்."
+        ),
+        "te": (
+            "బీప్ తర్వాత చెప్పండి, మీరు ఏ పని చేస్తారు, మీకు ఏమి కావాలి. "
+            "ఉదాహరణకు — నేను కూరగాయలు అమ్ముతాను, నాకు రుణం కావాలి. "
+            "చెప్పిన తర్వాత హాష్ నొక్కండి."
+        ),
+        "kn": (
+            "ಬೀಪ್ ನಂತರ ಹೇಳಿ, ನೀವು ಏನು ಕೆಲಸ ಮಾಡುತ್ತೀರಿ ಮತ್ತು ನಿಮಗೆ ಏನು ಬೇಕು. "
+            "ಉದಾಹರಣೆಗೆ — ನಾನು ತರಕಾರಿ ಮಾರುತ್ತೇನೆ, ನನಗೆ ಸಾಲ ಬೇಕು. "
+            "ಹೇಳಿದ ನಂತರ ಹ್ಯಾಶ್ ಒತ್ತಿ."
+        ),
     },
     "thinking": {
         "hi": "एक मिनट रुकिए। मैं सरकारी नियम देख रहा हूँ।",
         "en": "One moment. I am checking the government rules.",
+        "mr": "एक मिनिट थांबा. मी सरकारी नियम पाहत आहे.",
+        "gu": "એક મિનિટ રોકાઓ. હું સરકારી નિયમો જોઈ રહ્યો છું.",
+        "bn": "এক মিনিট অপেক্ষা করুন। আমি সরকারি নিয়ম দেখছি।",
+        "ta": "ஒரு நிமிடம் காத்திருங்கள். நான் அரசு விதிகளைப் பார்க்கிறேன்.",
+        "te": "ఒక నిమిషం ఆగండి. నేను ప్రభుత్వ నియమాలు చూస్తున్నాను.",
+        "kn": "ಒಂದು ನಿಮಿಷ ಕಾಯಿರಿ. ನಾನು ಸರ್ಕಾರಿ ನಿಯಮಗಳನ್ನು ನೋಡುತ್ತಿದ್ದೇನೆ.",
     },
     "after_answer": {
         "hi": (
@@ -79,6 +119,30 @@ PROMPTS = {
             "To start your application, press two. "
             "To speak to a person, press zero."
         ),
+        "mr": (
+            "पुन्हा ऐकण्यासाठी एक दाबा. अर्ज सुरू करण्यासाठी दोन दाबा. "
+            "एखाद्या व्यक्तीशी बोलण्यासाठी शून्य दाबा."
+        ),
+        "gu": (
+            "ફરી સાંભળવા માટે એક દબાવો. અરજી શરૂ કરવા માટે બે દબાવો. "
+            "કોઈ વ્યક્તિ સાથે વાત કરવા માટે શૂન્ય દબાવો."
+        ),
+        "bn": (
+            "আবার শুনতে এক চাপুন। আবেদন শুরু করতে দুই চাপুন। "
+            "কারও সঙ্গে কথা বলতে শূন্য চাপুন।"
+        ),
+        "ta": (
+            "மீண்டும் கேட்க ஒன்று அழுத்துங்கள். விண்ணப்பத்தைத் தொடங்க இரண்டு அழுத்துங்கள். "
+            "ஒருவருடன் பேச பூஜ்ஜியம் அழுத்துங்கள்."
+        ),
+        "te": (
+            "మళ్ళీ వినడానికి ఒకటి నొక్కండి. దరఖాస్తు ప్రారంభించడానికి రెండు నొక్కండి. "
+            "ఒక వ్యక్తితో మాట్లాడటానికి సున్నా నొక్కండి."
+        ),
+        "kn": (
+            "ಮತ್ತೆ ಕೇಳಲು ಒಂದು ಒತ್ತಿ. ಅರ್ಜಿ ಪ್ರಾರಂಭಿಸಲು ಎರಡು ಒತ್ತಿ. "
+            "ಒಬ್ಬ ವ್ಯಕ್ತಿಯೊಂದಿಗೆ ಮಾತನಾಡಲು ಸೊನ್ನೆ ಒತ್ತಿ."
+        ),
     },
     "case_opened": {
         "hi": (
@@ -88,6 +152,30 @@ PROMPTS = {
         "en": (
             "Your application has been started. We will call you with reminders. "
             "Press nine to hang up."
+        ),
+        "mr": (
+            "तुमचा अर्ज सुरू झाला आहे. आम्ही तुम्हाला आठवण करून देण्यासाठी फोन करू. "
+            "फोन ठेवण्यासाठी नऊ दाबा."
+        ),
+        "gu": (
+            "તમારી અરજી શરૂ થઈ ગઈ છે. અમે તમને યાદ કરાવવા ફોન કરીશું. "
+            "ફોન મૂકવા માટે નવ દબાવો."
+        ),
+        "bn": (
+            "আপনার আবেদন শুরু হয়েছে। আমরা আপনাকে মনে করিয়ে দিতে ফোন করব। "
+            "ফোন রাখতে নয় চাপুন।"
+        ),
+        "ta": (
+            "உங்கள் விண்ணப்பம் தொடங்கிவிட்டது. நினைவூட்ட நாங்கள் அழைப்போம். "
+            "அழைப்பை முடிக்க ஒன்பது அழுத்துங்கள்."
+        ),
+        "te": (
+            "మీ దరఖాస్తు ప్రారంభమైంది. గుర్తు చేయడానికి మేము ఫోన్ చేస్తాము. "
+            "ఫోన్ పెట్టేయడానికి తొమ్మిది నొక్కండి."
+        ),
+        "kn": (
+            "ನಿಮ್ಮ ಅರ್ಜಿ ಪ್ರಾರಂಭವಾಗಿದೆ. ನೆನಪಿಸಲು ನಾವು ಫೋನ್ ಮಾಡುತ್ತೇವೆ. "
+            "ಫೋನ್ ಇಡಲು ಒಂಬತ್ತು ಒತ್ತಿ."
         ),
     },
     "operator": {
@@ -99,20 +187,88 @@ PROMPTS = {
             "Connecting you to an operator at your nearest C S C centre. "
             "They will help you check your documents."
         ),
+        "mr": (
+            "तुम्हाला तुमच्या जवळच्या सी. एस. सी. केंद्रातील ऑपरेटरशी जोडत आहोत. "
+            "ते तुमचे कागद पाहण्यात मदत करतील."
+        ),
+        "gu": (
+            "તમને તમારા નજીકના સી. એસ. સી. કેન્દ્રના ઓપરેટર સાથે જોડી રહ્યા છીએ. "
+            "તેઓ તમારા કાગળ જોવામાં મદદ કરશે."
+        ),
+        "bn": (
+            "আপনাকে আপনার নিকটতম সি. এস. সি. কেন্দ্রের অপারেটরের সঙ্গে যোগ করা হচ্ছে। "
+            "তাঁরা আপনার কাগজ দেখতে সাহায্য করবেন।"
+        ),
+        "ta": (
+            "உங்கள் அருகிலுள்ள சி. எஸ். சி. மையத்தின் ஆபரேட்டருடன் இணைக்கிறோம். "
+            "அவர்கள் உங்கள் ஆவணங்களைப் பார்க்க உதவுவார்கள்."
+        ),
+        "te": (
+            "మీ దగ్గరి సి. ఎస్. సి. కేంద్రం ఆపరేటర్‌తో కలుపుతున్నాము. "
+            "వారు మీ పత్రాలు చూడటానికి సహాయం చేస్తారు."
+        ),
+        "kn": (
+            "ನಿಮ್ಮ ಹತ್ತಿರದ ಸಿ. ಎಸ್. ಸಿ. ಕೇಂದ್ರದ ಆಪರೇಟರ್‌ಗೆ ಜೋಡಿಸುತ್ತಿದ್ದೇವೆ. "
+            "ಅವರು ನಿಮ್ಮ ದಾಖಲೆಗಳನ್ನು ನೋಡಲು ಸಹಾಯ ಮಾಡುತ್ತಾರೆ."
+        ),
     },
     "not_understood": {
         "hi": "माफ़ कीजिए, मैं समझ नहीं पाया। दोबारा कोशिश करने के लिए एक दबाइए।",
         "en": "Sorry, I did not understand that. Press one to try again.",
+        "mr": "माफ करा, मला समजलं नाही. पुन्हा प्रयत्न करण्यासाठी एक दाबा.",
+        "gu": "માફ કરો, મને સમજાયું નહીં. ફરી પ્રયત્ન કરવા માટે એક દબાવો.",
+        "bn": "দুঃখিত, আমি বুঝতে পারিনি। আবার চেষ্টা করতে এক চাপুন।",
+        "ta": "மன்னிக்கவும், எனக்குப் புரியவில்லை. மீண்டும் முயற்சிக்க ஒன்று அழுத்துங்கள்.",
+        "te": "క్షమించండి, నాకు అర్థం కాలేదు. మళ్ళీ ప్రయత్నించడానికి ఒకటి నొక్కండి.",
+        "kn": "ಕ್ಷಮಿಸಿ, ನನಗೆ ಅರ್ಥವಾಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಲು ಒಂದು ಒತ್ತಿ.",
     },
     "nothing_heard": {
         "hi": "मुझे कुछ सुनाई नहीं दिया। दोबारा बोलने के लिए एक दबाइए।",
         "en": "I did not hear anything. Press one to speak again.",
+        "mr": "मला काही ऐकू आलं नाही. पुन्हा बोलण्यासाठी एक दाबा.",
+        "gu": "મને કંઈ સંભળાયું નહીં. ફરી બોલવા માટે એક દબાવો.",
+        "bn": "আমি কিছু শুনতে পাইনি। আবার বলতে এক চাপুন।",
+        "ta": "எனக்கு எதுவும் கேட்கவில்லை. மீண்டும் பேச ஒன்று அழுத்துங்கள்.",
+        "te": "నాకు ఏమీ వినిపించలేదు. మళ్ళీ మాట్లాడటానికి ఒకటి నొక్కండి.",
+        "kn": "ನನಗೆ ಏನೂ ಕೇಳಿಸಲಿಲ್ಲ. ಮತ್ತೆ ಮಾತನಾಡಲು ಒಂದು ಒತ್ತಿ.",
     },
     "goodbye": {
         "hi": "सेतु को फ़ोन करने के लिए धन्यवाद। नमस्ते।",
         "en": "Thank you for calling Setu. Goodbye.",
+        "mr": "सेतुला फोन केल्याबद्दल धन्यवाद. नमस्कार.",
+        "gu": "સેતુને ફોન કરવા બદલ આભાર. નમસ્તે.",
+        "bn": "সেতুতে ফোন করার জন্য ধন্যবাদ। নমস্কার।",
+        "ta": "சேதுவை அழைத்ததற்கு நன்றி. வணக்கம்.",
+        "te": "సేతుకు ఫోన్ చేసినందుకు ధన్యవాదాలు. నమస్కారం.",
+        "kn": "ಸೇತುಗೆ ಫೋನ್ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ನಮಸ್ಕಾರ.",
     },
 }
+
+# The offered languages, and the only place that list lives. voice.ASR_LANGUAGES
+# says what we can *hear*; this says what we can hold a whole conversation in,
+# which additionally needs a prompt set and a TTS voice.
+#
+# The greeting deliberately stays a Hindi/English menu: it is spoken before the
+# caller has chosen anything, and reading eight options aloud to someone on a
+# feature phone would be worse than useless. A client with a screen passes its
+# language to begin() and never hears the menu at all.
+SUPPORTED_LANGUAGES = ("hi", "en", "mr", "gu", "bn", "ta", "te", "kn")
+
+LANGUAGE_LABELS = {
+    "hi": "हिंदी", "en": "English", "mr": "मराठी", "gu": "ગુજરાતી",
+    "bn": "বাংলা", "ta": "தமிழ்", "te": "తెలుగు", "kn": "ಕನ್ನಡ",
+}
+
+
+def prompt_text(key: str, lang: str) -> str:
+    """
+    A fixed prompt, falling back rather than raising.
+
+    PROMPTS[key][lang] would KeyError the moment a language is offered before its
+    prompts are written, and a KeyError here is a dead call.
+    """
+    options = PROMPTS[key]
+    return options.get(lang) or options.get("hi") or next(iter(options.values()))
 
 
 @dataclass
@@ -162,7 +318,7 @@ def _audio_url_for(text: str, lang: str) -> str | None:
 
 def _turn(session: Session, key: str, expect: Expect, **kw) -> Turn:
     """Build a Turn from a named prompt, in the session's language."""
-    text = PROMPTS[key][session.language]
+    text = prompt_text(key, session.language)
     session.state = key
     return Turn(
         say=text,
@@ -199,7 +355,7 @@ def begin(language: str | None = None) -> tuple[str, Turn]:
     session = Session(call_id=call_id)
     _SESSIONS[call_id] = session
 
-    if language in ("hi", "en"):
+    if language in SUPPORTED_LANGUAGES:
         session.language = language
         return call_id, _turn(session, "ask_situation", "speech")
 
@@ -277,7 +433,7 @@ def on_speech(call_id: str, text: str) -> Turn:
 
     # The answer and the menu are spoken back to back, but they are separate
     # audio files so "press 1 to repeat" can replay the answer alone.
-    menu = PROMPTS["after_answer"][session.language]
+    menu = prompt_text("after_answer", session.language)
     session.state = "after_answer"
 
     return Turn(
@@ -309,6 +465,28 @@ class TextRequest(BaseModel):
 
 class CallRequest(BaseModel):
     language: str | None = None
+
+
+@router.get("/languages")
+def languages():
+    """
+    What the client should offer, and whether each one can speak offline.
+
+    The PWA builds its language picker from this rather than hardcoding a list,
+    so adding a language is one entry in SUPPORTED_LANGUAGES and not an edit in
+    two files that drift apart.
+    """
+    silent = {lang for _key, lang in missing_prompt_audio()}
+    return {
+        "languages": [
+            {
+                "code": code,
+                "label": LANGUAGE_LABELS.get(code, code),
+                "speaks_offline": code not in silent,
+            }
+            for code in SUPPORTED_LANGUAGES
+        ]
+    }
 
 
 @router.post("/call")
@@ -383,11 +561,13 @@ def get_transcript(call_id: str):
 
 def precache_prompts() -> dict[str, str]:
     """
-    Synthesise every fixed prompt in both languages.
+    Synthesise every fixed prompt in every offered language.
 
-    Run this before going on stage. Once cached, the whole call flow speaks with
-    the wifi off — only the generated answer needs the network, and the persona
-    buttons cover that too if you replay a rehearsed line.
+    Run this before going on stage. edge-tts synthesises over the network, so an
+    uncached line cannot be spoken with the wifi off — it degrades to text, which
+    for a voice-first product is the demo failing quietly. Once this has run, the
+    entire call flow speaks offline in all eight languages; only a novel
+    generated answer still needs the wire.
     """
     lines = [
         (text, lang)
@@ -395,3 +575,13 @@ def precache_prompts() -> dict[str, str]:
         for lang, text in prompt.items()
     ]
     return voice.precache(lines)
+
+
+def missing_prompt_audio() -> list[tuple[str, str]]:
+    """Which (key, language) pairs would be silent offline right now."""
+    return [
+        (key, lang)
+        for key, prompt in PROMPTS.items()
+        for lang, text in prompt.items()
+        if not voice.is_cached(text, lang)
+    ]
