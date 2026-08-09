@@ -7,7 +7,31 @@ Built for IBM Hackathon Hackverse 2.0.
 
 ## Demo
 
-[Coming soon]
+The vendor's phone (PWA):
+**https://outer-ensemble-pillow-three.trycloudflare.com/pwa/**
+
+The IVR handset simulator is at `/` on the same host.
+
+Open it on a phone, tap the green button, and speak. The mic needs a secure
+context, which is the whole reason this is tunnelled rather than served over
+the laptop's LAN address — `getUserMedia` does not exist on plain `http://`.
+
+**That URL is temporary.** It is a cloudflared *quick tunnel*: it is bound to
+one running `cloudflared` process and dies with it, so it changes every time
+the backend is restarted. If the link above is dead, regenerate it:
+
+```bash
+.venv/bin/uvicorn services.api.main:app --host 0.0.0.0 --port 8000   # terminal 1
+cloudflared tunnel --url http://localhost:8000                       # terminal 2
+```
+
+`cloudflared` prints the new `https://<something>.trycloudflare.com` on
+startup. Update this section when it changes, or the link here is worse than
+no link at all.
+
+Give the API about a minute after it starts before timing anything: it warms
+Whisper and a 2.4GB vision model in the background, and requests made during
+that window measure several times slower than the same request afterwards.
 
 ## Languages
 
