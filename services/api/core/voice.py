@@ -206,6 +206,14 @@ def transcribe_auto(
         guess = getattr(info, "language", None)
         if guess in ASR_LANGUAGES and confidence >= DETECT_FLOOR:
             detected = guess
+        elif guess == default_language:
+            # The guess is weak but it agrees with what the caller already
+            # picked, so there is nothing to correct and the decode in hand was
+            # made in the right language. Redoing it bought a second identical
+            # transcript at full price: Marathi detects at 0.54 against a 0.60
+            # floor every single time, which made every Marathi turn pay for
+            # two decodes - 11-15s where one costs 4.7-6.7s.
+            detected = guess
         else:
             # Weak or unsupported guess: keep the caller's choice, and redo the
             # transcript in it — a Hindi decode of Marathi audio is not what we
