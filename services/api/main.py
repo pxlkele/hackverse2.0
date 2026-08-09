@@ -312,6 +312,23 @@ def ledger_seed(user_id: str = "demo", days: int = 30):
     return {"days_written": written, "user_id": user_id}
 
 
+@app.get("/api/audio")
+def audio(path: str):
+    """
+    Serve a cached audio file to the console.
+
+    Restricted to the voice cache directory: `path` arrives from a query string,
+    so without the containment check any file on disk could be read.
+    """
+    from fastapi.responses import FileResponse
+
+    resolved = Path(path).resolve()
+    cache = voice.CACHE_DIR.resolve()
+    if not resolved.is_file() or cache not in resolved.parents:
+        raise HTTPException(status_code=404, detail="no such audio")
+    return FileResponse(resolved, media_type="audio/mpeg")
+
+
 @app.get("/api/voice/health")
 def voice_health():
     return voice.cache_stats()
