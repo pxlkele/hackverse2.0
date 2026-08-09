@@ -125,30 +125,38 @@ Also in this block: **Sanvi** wires voice OUT (edge-tts) — 1 hour, do it first
 
 ## Who owns what, at a glance
 
-**PALAK — the brain**
+> **Revised mid-build.** Palak has taken over the operator console, so the split
+> is no longer brain/surface — it is now **console + engine (Palak)** against
+> **phone + channels (Sanvi)**. Split by *file*, not by layer, because two
+> people editing the same UI file is how you lose an hour to conflicts at 3am.
+
+**PALAK — engine and operator console**
 ```
-ingestion/pipeline.py      Docling → DPK → Chroma
-data/schemes.yaml          typed rules + remedies  ← highest-value artifact
-core/eligibility.py        the rule engine
-core/pathfinder.py         the ladder  ★
-core/rag.py                citations
-core/trust.py              replayable traces
-core/standing.py           re-evaluation
-eval/                      personas, precision, fairness
-ledger.py OR doc_doctor.py logic half
+ingestion/pipeline.py         Docling → DPK → Chroma            done
+data/schemes.yaml             typed rules + remedies  ★         done, 4 schemes
+core/eligibility.py           the rule engine                   done
+core/pathfinder.py            the ladder  ★                     done
+core/rag.py                   citations                         done
+core/doc_doctor.py            document comparison               done
+core/store.py                 cases, coverage gaps              done
+eval/                         personas, fairness, citations     done
+core/ledger.py                voice ledger → statement          TO BUILD
+apps/dashboard/app.py         operator console — YOURS NOW      needs Doc Doctor
+                              + ladder view + ledger view
 ```
 
-**SANVI — the surface**
+**SANVI — phone and channels**
 ```
-core/llm.py                Granite adapter
-core/profile.py            text → Profile JSON
-core/voice.py              Whisper in, edge-tts out
-apps/web/dashboard         dev tool, built early
-apps/web/ladder            THE HERO SCREEN  ★
-apps/web/pwa               real-user interface
-channels/ivr_sim.py        browser IVR
-ledger.py OR doc_doctor.py UI half
+core/llm.py                   Granite adapter                   done
+core/profile.py               text → Profile JSON               done
+core/voice.py                 Whisper in, edge-tts out          done
+apps/web/index.html           the PWA — the vendor's phone      hers
+channels/ivr_sim.py           browser IVR handset               hers
 ```
+
+**File ownership is the rule.** Palak touches `apps/dashboard/`, Sanvi touches
+`apps/web/` and `channels/`. Anything in `services/api/core/` either of you may
+edit, but say so in chat first — that is where you will collide.
 
 ---
 
@@ -160,9 +168,46 @@ ledger.py OR doc_doctor.py UI half
    is a guaranteed integration disaster at hour 28.
 3. **The frozen schemas are frozen.** If one of you needs a change, both stop and
    agree. Silent schema edits will cost you hours.
+   (Amended: `Profile`, `Decision` and `LadderStep` have all grown since hour 2 —
+   age parsing, UPI documents, rung citations, `depends_on`. Each change was
+   announced. Keep doing that.)
 4. **If you fall behind, cut schemes first** — 3 schemes with a working ladder
    beats 4 with a broken one.
 5. **Ladder before everything.** If it comes down to the ladder or any other
    feature, the ladder wins. It's the whole submission.
 6. **Sleep in shifts if you must, but don't both go under at once.** One person
    awake and coherent beats two people making 3am decisions.
+
+---
+
+## Where it stands, and what is left
+
+**Done:** ingestion with IBM Data Prep Kit (642 chunks, 9 documents), four
+schemes with verbatim-verified citations, the eligibility engine, the ladder
+with dependency ordering, Doc Doctor, the case store, the eval harness (21
+personas, precision and recall 1.00, fairness spread 0.00), the citation
+verifier, 69 tests, voice in and out, the operator console, the PWA and the IVR
+simulator.
+
+**Left — code**
+
+| What | Owner | Est |
+|---|---|---|
+| Doc Doctor UI — the endpoint works but **nothing calls it** | Palak | ~1h |
+| `core/ledger.py` + statement view | Palak | ~3h |
+
+**Left — not code, and this is where the remaining risk is**
+
+1. **Field session** — his voice, his documents, the name-spelling check.
+   Curfew-gated. Everything else can be rehearsed; this cannot be faked.
+2. **Airplane-mode run** — wifi off, the whole demo, end to end. Never done yet.
+   It will find something, so do it while there is time to fix it.
+3. **Backup video** — record while things work.
+4. **Deck** — Round 1 still says ₹10k/₹20k/₹50k and claims Bhashini. The
+   tranches are ₹15k/₹25k/₹50k and Bhashini is not in the stack. A judge
+   cross-referencing the deck against the demo will read mismatches as
+   sloppiness.
+5. **Rehearse twice, out loud, timed.**
+
+**Cut and staying cut:** `standing.py` (demos as "trust us, it re-runs" — put it
+on the roadmap slide), real Twilio telephony, WhatsApp.
