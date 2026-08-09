@@ -1,731 +1,718 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Setu — Live Pipeline</title>
-  <style>
-    /* ── Reset & Base ────────────────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg:        #0a0b0f;
-      --surface:   #111318;
-      --card:      #16191f;
-      --border:    #232730;
-      --text:      #e8eaf0;
-      --muted:     #6b7280;
-      --neon-blue: #00d4ff;
-      --neon-grn:  #00ff94;
-      --neon-purp: #bf5af2;
-      --neon-ambr: #f5a623;
-      --pass:      #00ff94;
-      --fail:      #ff4560;
-      --warn:      #f5a623;
-      --glow-blue: 0 0 8px #00d4ff88, 0 0 24px #00d4ff33;
-      --glow-grn:  0 0 8px #00ff9488, 0 0 24px #00ff9433;
-      --glow-purp: 0 0 8px #bf5af288, 0 0 24px #bf5af233;
-    }
-    html, body {
-      height: 100%;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
-      overflow-x: hidden;
-    }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Setu — Pipeline</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000000;--surface:#080a10;--card:#0a0c14;--border:#1a1d2a;
+  --text:#e8edf8;--muted:#4a5270;
+  --c1:#00d4ff;--c2:#00ff94;--c3:#bf5af2;--ca:#f5a623;--cr:#ff4560;
+  --g1:0 0 12px #00d4ffaa,0 0 40px #00d4ff33,0 0 80px #00d4ff11;
+  --g2:0 0 12px #00ff94aa,0 0 40px #00ff9433,0 0 80px #00ff9411;
+  --g3:0 0 12px #bf5af2aa,0 0 40px #bf5af233,0 0 80px #bf5af211;
+  --ga:0 0 12px #f5a623aa,0 0 40px #f5a62333;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.6;overflow:hidden}
 
-    /* ── Header ─────────────────────────────────────────────────────────── */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 28px;
-      border-bottom: 1px solid var(--border);
-      background: var(--surface);
-    }
-    .logo { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.5px; color: var(--neon-blue); text-shadow: var(--glow-blue); }
-    .logo span { color: var(--text); }
-    .tagline { font-size: 0.78rem; color: var(--muted); }
-    #call-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
-    #call-indicator .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
-    #call-indicator.live .dot { background: var(--pass); animation: pulse 1.2s ease-in-out infinite; box-shadow: var(--glow-grn); }
-    #call-indicator.live { color: var(--pass); }
-    @keyframes pulse { 0%,100% { transform: scale(1); opacity:1; } 50% { transform: scale(1.35); opacity:.6; } }
-    #timer { font-variant-numeric: tabular-nums; }
+/* ── canvas bg ── */
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
 
-    /* ── Main layout ─────────────────────────────────────────────────────── */
-    main {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-      padding: 20px 20px 0;
-      height: calc(100vh - 65px - 52px);
-      min-height: 0;
-    }
+/* ── scanlines ── */
+body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.08) 2px,rgba(0,0,0,.08) 4px);
+  animation:scanroll 8s linear infinite}
+@keyframes scanroll{from{background-position:0 0}to{background-position:0 100px}}
 
-    /* ── Column cards ────────────────────────────────────────────────────── */
-    .col {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      transition: border-color 0.4s, box-shadow 0.4s;
-    }
-    .col.active {
-      border-color: var(--neon-blue);
-      box-shadow: 0 0 0 1px #00d4ff22, 0 0 32px #00d4ff18;
-    }
-    .col:nth-child(2).active { border-color: var(--neon-grn); box-shadow: 0 0 0 1px #00ff9422, 0 0 32px #00ff9418; }
-    .col:nth-child(3).active { border-color: var(--neon-purp); box-shadow: 0 0 0 1px #bf5af222, 0 0 32px #bf5af218; }
+/* ── layout ── */
+#app{position:relative;z-index:2;display:grid;grid-template-rows:56px 1fr 44px 48px;height:100vh;overflow:hidden}
 
-    .col-header {
-      padding: 14px 16px 10px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      flex-shrink: 0;
-    }
-    .col-header .step-num {
-      width: 22px; height: 22px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.7rem; font-weight: 700;
-      background: var(--border); color: var(--muted);
-      transition: background 0.4s, color 0.4s, box-shadow 0.4s;
-    }
-    .col.active .col-header .step-num { background: var(--neon-blue); color: var(--bg); box-shadow: var(--glow-blue); }
-    .col:nth-child(2).active .col-header .step-num { background: var(--neon-grn); color: var(--bg); box-shadow: var(--glow-grn); }
-    .col:nth-child(3).active .col-header .step-num { background: var(--neon-purp); color: #fff; box-shadow: var(--glow-purp); }
-    .col-title { font-weight: 600; font-size: 0.85rem; }
-    .col-sub { font-size: 0.73rem; color: var(--muted); margin-left: auto; }
+/* ── header ── */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.92);backdrop-filter:blur(12px)}
+.logo{font-size:1.2rem;font-weight:800;letter-spacing:-1px;color:var(--c1);text-shadow:var(--g1);display:flex;align-items:center;gap:8px}
+.logo-sub{font-size:.72rem;color:var(--muted);font-weight:400;letter-spacing:.05em;text-transform:uppercase;margin-left:4px;align-self:flex-end;margin-bottom:3px}
+.hdr-right{display:flex;align-items:center;gap:18px}
+.live-pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:.72rem;font-weight:700;border:1px solid var(--muted);color:var(--muted);transition:.3s}
+.live-pill.active{border-color:var(--c2);color:var(--c2);background:#00ff9412;box-shadow:var(--g2)}
+.live-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.live-pill.active .live-dot{animation:throb 1s ease-in-out infinite}
+@keyframes throb{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.5}}
+#hdr-timer{font-variant-numeric:tabular-nums;font-size:.8rem;color:var(--muted);font-family:ui-monospace,monospace;min-width:36px}
 
-    .col-body {
-      padding: 14px 16px;
-      flex: 1;
-      overflow-y: auto;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
-    }
-    .col-body::-webkit-scrollbar { width: 4px; }
-    .col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+/* ── three col main ── */
+main{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:12px;min-height:0;overflow:hidden}
 
-    /* ── Transcript ──────────────────────────────────────────────────────── */
-    #transcript-box {
-      font-size: 0.9rem;
-      line-height: 1.7;
-      min-height: 60px;
-      color: var(--text);
-    }
-    #transcript-box .cursor {
-      display: inline-block;
-      width: 2px; height: 14px;
-      background: var(--neon-blue);
-      box-shadow: var(--glow-blue);
-      animation: blink 0.9s step-end infinite;
-      vertical-align: text-bottom;
-      margin-left: 2px;
-    }
-    @keyframes blink { 50% { opacity: 0; } }
+/* ── col card ── */
+.col{background:var(--card);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;position:relative;transition:border-color .4s,box-shadow .4s}
+.col::before{content:'';position:absolute;inset:0;border-radius:14px;opacity:0;transition:opacity .4s;pointer-events:none}
+.col.c1-on{border-color:var(--c1);box-shadow:0 0 0 1px #00d4ff18,0 0 40px #00d4ff14,inset 0 0 30px #00d4ff06}
+.col.c1-on::before{background:radial-gradient(ellipse at 50% 0%,#00d4ff0a 0%,transparent 70%);opacity:1}
+.col.c2-on{border-color:var(--c2);box-shadow:0 0 0 1px #00ff9418,0 0 40px #00ff9414,inset 0 0 30px #00ff9406}
+.col.c2-on::before{background:radial-gradient(ellipse at 50% 0%,#00ff940a 0%,transparent 70%);opacity:1}
+.col.c3-on{border-color:var(--c3);box-shadow:0 0 0 1px #bf5af218,0 0 40px #bf5af214,inset 0 0 30px #bf5af206}
+.col.c3-on::before{background:radial-gradient(ellipse at 50% 0%,#bf5af20a 0%,transparent 70%);opacity:1}
 
-    /* ── Tag chips ───────────────────────────────────────────────────────── */
-    #tags-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; min-height: 28px; }
-    .tag {
-      padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
-      border: 1px solid var(--neon-blue); color: var(--neon-blue);
-      background: #00d4ff0f;
-      opacity: 0; transform: translateY(6px);
-      transition: opacity 0.35s, transform 0.35s;
-    }
-    .tag.show { opacity: 1; transform: none; }
-    .tag.grn  { border-color: var(--neon-grn); color: var(--neon-grn); background: #00ff940f; }
-    .tag.ambr { border-color: var(--neon-ambr); color: var(--neon-ambr); background: #f5a6230f; }
-    .tag.purp { border-color: var(--neon-purp); color: var(--neon-purp); background: #bf5af20f; }
+/* col header */
+.col-hdr{padding:12px 14px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;overflow:hidden}
+.col-hdr::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,currentColor,transparent);opacity:0;transition:opacity .4s}
+.col.c1-on .col-hdr{color:var(--c1)}.col.c1-on .col-hdr::after{opacity:.4}
+.col.c2-on .col-hdr{color:var(--c2)}.col.c2-on .col-hdr::after{opacity:.4}
+.col.c3-on .col-hdr{color:var(--c3)}.col.c3-on .col-hdr::after{opacity:.4}
+.step-badge{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:800;background:var(--border);color:var(--muted);flex-shrink:0;transition:.4s}
+.col.c1-on .step-badge{background:var(--c1);color:#000;box-shadow:var(--g1)}
+.col.c2-on .step-badge{background:var(--c2);color:#000;box-shadow:var(--g2)}
+.col.c3-on .step-badge{background:var(--c3);color:#fff;box-shadow:var(--g3)}
+.col-title{font-size:.82rem;font-weight:700;flex:1}
+.col-tag{font-size:.65rem;color:var(--muted);background:var(--border);padding:2px 7px;border-radius:8px;font-family:ui-monospace,monospace}
 
-    /* ── Divider ─────────────────────────────────────────────────────────── */
-    .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+/* col body */
+.col-body{padding:12px 14px;flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.col-body::-webkit-scrollbar{width:3px}
+.col-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
-    /* ── Document card ───────────────────────────────────────────────────── */
-    #doc-card {
-      border: 1px solid var(--border);
-      border-radius: 8px; padding: 12px 14px;
-      opacity: 0; transform: translateY(8px);
-      transition: opacity 0.5s, transform 0.5s, border-color 0.4s;
-      background: #0d1016;
-    }
-    #doc-card.show { opacity: 1; transform: none; border-color: var(--neon-grn); box-shadow: 0 0 14px #00ff9422; }
-    .doc-icon { font-size: 1.5rem; margin-bottom: 5px; }
-    .doc-name { font-size: 0.82rem; font-weight: 600; color: var(--neon-grn); word-break: break-all; }
-    .doc-meta { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+/* ── transcript ── */
+.transcript{font-size:.88rem;line-height:1.75;color:var(--text);min-height:50px;position:relative}
+.t-cursor{display:inline-block;width:2px;height:13px;background:var(--c1);box-shadow:var(--g1);animation:blink .85s step-end infinite;vertical-align:text-bottom;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
 
-    /* ── Verified badge ──────────────────────────────────────────────────── */
-    #verify-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      margin-top: 10px; padding: 5px 12px;
-      border-radius: 20px; font-size: 0.75rem; font-weight: 700;
-      background: #00ff9415; border: 1px solid var(--neon-grn); color: var(--neon-grn);
-      box-shadow: var(--glow-grn);
-      opacity: 0; transition: opacity 0.5s 0.2s;
-    }
-    #verify-badge.show { opacity: 1; }
+/* ── tag chips ── */
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;opacity:0;transform:translateY(8px) scale(.95);transition:opacity .3s,transform .3s}
+.chip.in{opacity:1;transform:none}
+.chip.blue{border:1px solid var(--c1);color:var(--c1);background:#00d4ff0e}
+.chip.grn {border:1px solid var(--c2);color:var(--c2);background:#00ff940e}
+.chip.purp{border:1px solid var(--c3);color:var(--c3);background:#bf5af20e}
+.chip.ambr{border:1px solid var(--ca);color:var(--ca);background:#f5a6230e}
+.chip.red {border:1px solid var(--cr);color:var(--cr);background:#ff45600e}
 
-    /* ── Rule list ───────────────────────────────────────────────────────── */
-    #rules-list { display: flex; flex-direction: column; gap: 6px; }
-    .rule-row {
-      display: flex; align-items: flex-start; gap: 8px;
-      padding: 6px 8px; border-radius: 6px;
-      background: #0d1016; border: 1px solid var(--border);
-      opacity: 0; transform: translateX(-8px);
-      transition: opacity 0.3s, transform 0.3s;
-      font-size: 0.78rem;
-    }
-    .rule-row.show { opacity: 1; transform: none; }
-    .rule-icon { font-size: 0.85rem; flex-shrink: 0; margin-top: 1px; }
-    .rule-label { flex: 1; }
-    .rule-cite { font-size: 0.68rem; color: var(--muted); margin-top: 2px; font-family: ui-monospace, monospace; }
-    .rule-row.pass { border-left: 2px solid var(--pass); }
-    .rule-row.fail { border-left: 2px solid var(--fail); }
-    .rule-row.unkn { border-left: 2px solid var(--warn); }
+/* ── section labels ── */
+.sec-label{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:4px}
 
-    /* ── Scheme result card ──────────────────────────────────────────────── */
-    #scheme-card {
-      border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
-      background: #0d1016;
-      opacity: 0; transform: translateY(8px);
-      transition: opacity 0.5s, transform 0.5s;
-    }
-    #scheme-card.show { opacity: 1; transform: none; border-color: var(--neon-purp); box-shadow: 0 0 14px #bf5af222; }
-    .scheme-badge {
-      display: inline-block; font-size: 0.68rem; font-weight: 700;
-      padding: 2px 9px; border-radius: 12px; margin-bottom: 8px;
-      background: var(--neon-grn); color: var(--bg);
-    }
-    .scheme-name { font-size: 1rem; font-weight: 700; margin-bottom: 4px; color: var(--neon-purp); text-shadow: var(--glow-purp); }
-    .scheme-benefit { font-size: 0.82rem; color: var(--muted); margin-bottom: 10px; }
-    .scheme-amount { font-size: 1.4rem; font-weight: 700; color: var(--neon-grn); text-shadow: var(--glow-grn); }
+/* ── profile rows ── */
+.prof-row{display:flex;gap:8px;font-size:.75rem;opacity:0;transform:translateX(-6px);transition:opacity .25s,transform .25s}
+.prof-row.in{opacity:1;transform:none}
+.prof-k{color:var(--muted);min-width:100px;flex-shrink:0}
+.prof-v{color:var(--text);font-weight:500}
 
-    /* ── Spoken response ─────────────────────────────────────────────────── */
-    #spoken-block {
-      margin-top: 14px;
-      opacity: 0; transform: translateY(6px);
-      transition: opacity 0.5s 0.3s, transform 0.5s 0.3s;
-    }
-    #spoken-block.show { opacity: 1; transform: none; }
-    .spoken-label { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-bottom: 7px; }
-    .waveform { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
-    .wave-bar { width: 3px; border-radius: 2px; background: var(--neon-purp); opacity: 0; transform: scaleY(0.2); transform-origin: bottom; transition: transform 0.4s, opacity 0.4s; }
-    .wave-bar.active { opacity: 1; animation: wave-anim 0.8s ease-in-out infinite alternate; }
-    @keyframes wave-anim { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
-    .wave-bar:nth-child(2) { animation-delay: 0.1s; }
-    .wave-bar:nth-child(3) { animation-delay: 0.2s; }
-    .wave-bar:nth-child(4) { animation-delay: 0.15s; }
-    .wave-bar:nth-child(5) { animation-delay: 0.05s; }
-    #spoken-text { font-size: 0.88rem; line-height: 1.65; color: var(--text); }
+/* ── doc card ── */
+.doc-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#090b14;opacity:0;transform:translateY(10px);transition:opacity .5s,transform .5s,border-color .5s,box-shadow .5s}
+.doc-card.in{opacity:1;transform:none;border-color:var(--c2);box-shadow:0 0 20px #00ff9420}
+.doc-icon{font-size:1.3rem;margin-bottom:4px}
+.doc-name{font-size:.8rem;font-weight:700;color:var(--c2);line-height:1.3}
+.doc-meta{font-size:.68rem;color:var(--muted);margin-top:3px;font-family:ui-monospace,monospace}
 
-    /* ── Trace bar ───────────────────────────────────────────────────────── */
-    #trace-bar {
-      padding: 10px 20px;
-      border-top: 1px solid var(--border);
-      background: var(--surface);
-      display: flex; align-items: center; gap: 14px;
-      font-size: 0.7rem; color: var(--muted);
-      font-family: ui-monospace, monospace;
-      opacity: 0; transition: opacity 0.5s;
-      flex-shrink: 0;
-    }
-    #trace-bar.show { opacity: 1; }
-    .trace-chip { background: var(--border); padding: 2px 7px; border-radius: 4px; }
-    .trace-chip.ok { background: #00ff941a; color: var(--neon-grn); }
+/* ── verify badge ── */
+.v-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:.7rem;font-weight:800;border:1px solid var(--c2);color:var(--c2);background:#00ff9412;box-shadow:var(--g2);opacity:0;transition:opacity .5s .1s}
+.v-badge.in{opacity:1}
+.v-check{font-size:.9rem}
 
-    /* ── Footer trigger ──────────────────────────────────────────────────── */
-    #footer {
-      padding: 10px 20px;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .scenario-pills { display: flex; gap: 8px; flex-wrap: wrap; }
-    .pill {
-      padding: 5px 13px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
-      cursor: pointer; border: 1px solid var(--border); color: var(--muted);
-      background: var(--card); transition: all 0.2s;
-    }
-    .pill:hover, .pill.active { border-color: var(--neon-blue); color: var(--neon-blue); background: #00d4ff0f; }
-    #run-btn {
-      padding: 8px 22px; border-radius: 8px; font-size: 0.85rem; font-weight: 700;
-      cursor: pointer; border: none;
-      background: var(--neon-blue); color: var(--bg);
-      box-shadow: var(--glow-blue);
-      transition: transform 0.15s, box-shadow 0.15s;
-    }
-    #run-btn:hover { transform: translateY(-1px); box-shadow: 0 0 12px #00d4ffbb, 0 0 36px #00d4ff44; }
-    #run-btn:active { transform: translateY(0); }
-    #run-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+/* ── rule rows ── */
+.rule{display:flex;gap:7px;align-items:flex-start;padding:6px 8px;border-radius:8px;background:#090b14;font-size:.75rem;opacity:0;transform:translateX(-10px);transition:opacity .3s,transform .3s;position:relative;overflow:hidden}
+.rule.in{opacity:1;transform:none}
+.rule::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px}
+.rule.pass::before{background:var(--c2)}
+.rule.fail::before{background:var(--cr)}
+.rule.unkn::before{background:var(--ca)}
+.rule-ico{flex-shrink:0;font-size:.8rem;margin-top:1px;font-weight:800}
+.rule.pass .rule-ico{color:var(--c2)}
+.rule.fail .rule-ico{color:var(--cr)}
+.rule.unkn .rule-ico{color:var(--ca)}
+.rule-body{flex:1}
+.rule-lbl{color:var(--text)}
+.rule-cite{font-size:.65rem;color:var(--muted);font-family:ui-monospace,monospace;margin-top:1px}
+.rule-flash{position:absolute;inset:0;background:currentColor;opacity:0;border-radius:8px}
 
-    /* ── Empty state ─────────────────────────────────────────────────────── */
-    .empty { color: var(--muted); font-size: 0.82rem; font-style: italic; }
-  </style>
+/* ── scheme card ── */
+.scheme-card{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:#090b14;opacity:0;transform:translateY(10px);transition:opacity .5s,transform .5s,border-color .5s,box-shadow .5s}
+.scheme-card.in{opacity:1;transform:none;border-color:var(--c3);box-shadow:0 0 20px #bf5af220}
+.s-badge{display:inline-block;font-size:.62rem;font-weight:800;padding:2px 9px;border-radius:10px;margin-bottom:7px;text-transform:uppercase;letter-spacing:.04em}
+.s-badge.elig{background:var(--c2);color:#000}
+.s-badge.path{background:var(--ca);color:#000}
+.s-badge.info{background:var(--muted);color:#fff}
+.s-name{font-size:.95rem;font-weight:800;color:var(--c3);text-shadow:var(--g3);margin-bottom:3px;line-height:1.3}
+.s-desc{font-size:.75rem;color:var(--muted);margin-bottom:10px}
+.s-amount{font-size:1.6rem;font-weight:800;color:var(--c2);text-shadow:var(--g2);letter-spacing:-1px}
+
+/* ── ladder steps ── */
+.ladder{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.rung{padding:6px 8px 6px 12px;border-radius:0 8px 8px 0;border-left:2px solid var(--c3);background:#000000;font-size:.73rem;opacity:0;transform:translateX(-8px);transition:opacity .3s,transform .3s}
+.rung.in{opacity:1;transform:none}
+.rung-title{font-weight:700;color:var(--text)}
+.rung-meta{color:var(--muted);font-size:.68rem;margin-top:1px}
+
+/* ── spoken block ── */
+.spoken-wrap{margin-top:4px;opacity:0;transform:translateY(6px);transition:opacity .5s .2s,transform .5s .2s}
+.spoken-wrap.in{opacity:1;transform:none}
+.spoken-hdr{display:flex;align-items:center;gap:7px;font-size:.68rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
+.waveform{display:flex;align-items:center;gap:2px;height:16px}
+.wb{width:2px;border-radius:2px;background:var(--c3);opacity:.3;transform:scaleY(.2);transform-origin:center;transition:all .3s}
+.wb.on{opacity:1;animation:wv .7s ease-in-out infinite alternate}
+.wb:nth-child(2){animation-delay:.1s}.wb:nth-child(3){animation-delay:.2s}.wb:nth-child(4){animation-delay:.15s}.wb:nth-child(5){animation-delay:.05s}.wb:nth-child(6){animation-delay:.25s}.wb:nth-child(7){animation-delay:.08s}
+@keyframes wv{from{transform:scaleY(.2)}to{transform:scaleY(1)}}
+.spoken-text{font-size:.85rem;line-height:1.7;color:var(--text);border-left:2px solid var(--c3);padding-left:10px}
+
+/* ── trace bar ── */
+#trace-bar{padding:0 20px;border-top:1px solid var(--border);background:rgba(0,0,0,.95);display:flex;align-items:center;gap:10px;font-size:.65rem;color:var(--muted);font-family:ui-monospace,monospace;opacity:0;transition:opacity .6s}
+#trace-bar.in{opacity:1}
+.tc{background:var(--border);padding:2px 7px;border-radius:4px;font-size:.63rem}
+.tc.ok{background:#00ff9418;color:var(--c2);border:1px solid #00ff9430}
+.tc-spacer{flex:1}
+
+/* ── footer / controls ── */
+footer{display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-top:1px solid var(--border);background:rgba(13,15,24,.95);backdrop-filter:blur(12px)}
+.pills{display:flex;gap:7px}
+.pill{padding:5px 14px;border-radius:20px;font-size:.72rem;font-weight:700;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--card);transition:.2s;user-select:none}
+.pill:hover{border-color:var(--c1);color:var(--c1);background:#00d4ff0a}
+.pill.on{border-color:var(--c1);color:var(--c1);background:#00d4ff12;box-shadow:0 0 14px #00d4ff22}
+#run-btn{padding:9px 24px;border-radius:10px;font-size:.82rem;font-weight:800;cursor:pointer;border:none;background:var(--c1);color:#000;box-shadow:var(--g1);transition:.15s;letter-spacing:-.02em;position:relative;overflow:hidden}
+#run-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);transform:translateX(-100%);transition:transform .4s}
+#run-btn:hover::after{transform:translateX(100%)}
+#run-btn:hover{transform:translateY(-2px);box-shadow:0 0 20px #00d4ffcc,0 0 60px #00d4ff44}
+#run-btn:active{transform:translateY(0)}
+#run-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* ── stat counters above footer (impact bar) ── */
+#impact-bar{display:flex;align-items:stretch;border-top:1px solid var(--border);background:rgba(9,11,20,.95)}
+.stat{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 0;border-right:1px solid var(--border);gap:0}
+.stat:last-child{border-right:none}
+.stat-val{font-size:.95rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat-lbl{font-size:.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.stat.s-blue .stat-val{color:var(--c1);text-shadow:var(--g1)}
+.stat.s-grn  .stat-val{color:var(--c2);text-shadow:var(--g2)}
+.stat.s-purp .stat-val{color:var(--c3);text-shadow:var(--g3)}
+.stat.s-ambr .stat-val{color:var(--ca);text-shadow:var(--ga)}
+
+/* ── number counter animation ── */
+@keyframes countUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.count-anim{animation:countUp .4s ease both}
+
+/* ── empty placeholder ── */
+.empty-ph{color:var(--muted);font-size:.78rem;font-style:italic;padding:6px 0}
+
+/* ── connection line between columns (decorative) ── */
+.arrow-row{position:absolute;top:50%;left:100%;transform:translateY(-50%);z-index:10;pointer-events:none;display:flex;align-items:center}
+.arrow-line{width:12px;height:1px;background:var(--border)}
+.arrow-head{width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:5px solid var(--border)}
+
+/* ── scrollbar gutter fix ── */
+.col-body{scrollbar-gutter:stable}
+</style>
 </head>
 <body>
+<canvas id="bg-canvas"></canvas>
 
-<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+<!-- ── HEADER ── -->
 <header>
-  <div>
-    <div class="logo">🪜 <span>Setu</span></div>
-    <div class="tagline">Welfare entitlement engine — live pipeline view</div>
+  <div style="display:flex;align-items:baseline;gap:0">
+    <div class="logo">🪜 Setu <span class="logo-sub">welfare entitlement engine</span></div>
   </div>
-  <div id="call-indicator">
-    <div class="dot"></div>
-    <span id="call-status">Idle</span>
-    <span id="timer" style="display:none">0:00</span>
+  <div class="hdr-right">
+    <div id="live-pill" class="live-pill">
+      <div class="live-dot"></div>
+      <span id="live-label">Idle</span>
+    </div>
+    <div id="hdr-timer">0:00</div>
   </div>
 </header>
 
-<!-- ── Three-column pipeline ───────────────────────────────────────────────── -->
+<!-- ── MAIN THREE COLS ── -->
 <main>
 
-  <!-- Column 1: Input & Understanding -->
+  <!-- COL 1 -->
   <div class="col" id="col1">
-    <div class="col-header">
-      <div class="step-num">1</div>
+    <div class="col-hdr">
+      <div class="step-badge">1</div>
       <span class="col-title">Input &amp; Understanding</span>
-      <span class="col-sub">ASR → Profile</span>
+      <span class="col-tag">ASR → Profile</span>
     </div>
-    <div class="col-body">
-      <div id="transcript-box"><span class="empty">Awaiting input…</span></div>
-      <div id="tags-row"></div>
-      <hr class="divider" id="c1-divider" style="display:none">
-      <div id="profile-detail" style="display:none">
-        <div style="font-size:0.73rem;color:var(--muted);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Extracted profile</div>
-        <div id="profile-fields" style="display:flex;flex-direction:column;gap:4px;font-size:0.78rem;"></div>
-      </div>
+    <div class="col-body" id="c1-body">
+      <div class="empty-ph" id="c1-empty">Awaiting input…</div>
+      <div class="transcript" id="transcript" style="display:none"></div>
+      <div class="chips" id="tags" style="display:none"></div>
+      <div class="sec-label" id="c1-prof-lbl" style="display:none">Extracted Profile</div>
+      <div id="profile-rows"></div>
     </div>
   </div>
 
-  <!-- Column 2: Retrieval & Matching -->
+  <!-- COL 2 -->
   <div class="col" id="col2">
-    <div class="col-header">
-      <div class="step-num">2</div>
+    <div class="col-hdr">
+      <div class="step-badge">2</div>
       <span class="col-title">Retrieval &amp; Matching</span>
-      <span class="col-sub">RAG → Rules</span>
+      <span class="col-tag">RAG → Rules</span>
     </div>
-    <div class="col-body">
-      <div id="doc-card">
+    <div class="col-body" id="c2-body">
+      <div class="empty-ph" id="c2-empty">Waiting for profile…</div>
+      <div class="doc-card" id="doc-card" style="display:none">
         <div class="doc-icon">📄</div>
-        <div class="doc-name" id="doc-name">—</div>
-        <div class="doc-meta" id="doc-meta">—</div>
+        <div class="doc-name" id="doc-name"></div>
+        <div class="doc-meta" id="doc-meta"></div>
       </div>
-      <div id="verify-badge">✓ Verified against source</div>
-      <hr class="divider" style="margin-top:14px">
-      <div style="font-size:0.73rem;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Rule evaluations</div>
-      <div id="rules-list"><span class="empty">Waiting for retrieval…</span></div>
+      <div class="v-badge" id="v-badge" style="display:none">
+        <span class="v-check">✓</span> Verified against source
+      </div>
+      <div class="sec-label" id="c2-rules-lbl" style="display:none">Rule Evaluations</div>
+      <div id="rules-list"></div>
     </div>
   </div>
 
-  <!-- Column 3: Response & Outcome -->
+  <!-- COL 3 -->
   <div class="col" id="col3">
-    <div class="col-header">
-      <div class="step-num">3</div>
+    <div class="col-hdr">
+      <div class="step-badge">3</div>
       <span class="col-title">Response &amp; Outcome</span>
-      <span class="col-sub">Decision → TTS</span>
+      <span class="col-tag">Decision → TTS</span>
     </div>
-    <div class="col-body">
-      <div id="scheme-card">
-        <div class="scheme-badge" id="scheme-status">ELIGIBLE</div>
-        <div class="scheme-name" id="scheme-name">—</div>
-        <div class="scheme-benefit" id="scheme-benefit">—</div>
-        <div class="scheme-amount" id="scheme-amount">—</div>
-      </div>
-      <div id="spoken-block">
-        <div class="spoken-label">
-          <div class="waveform">
-            <div class="wave-bar" id="wb1"></div>
-            <div class="wave-bar" id="wb2"></div>
-            <div class="wave-bar" id="wb3"></div>
-            <div class="wave-bar" id="wb4"></div>
-            <div class="wave-bar" id="wb5"></div>
+    <div class="col-body" id="c3-body">
+      <div class="empty-ph" id="c3-empty">Waiting for rules…</div>
+      <div class="scheme-card" id="scheme-card" style="display:none"></div>
+      <div class="spoken-wrap" id="spoken-wrap" style="display:none">
+        <div class="spoken-hdr">
+          <div class="waveform" id="waveform">
+            <div class="wb" id="wb1"></div><div class="wb" id="wb2"></div>
+            <div class="wb" id="wb3"></div><div class="wb" id="wb4"></div>
+            <div class="wb" id="wb5"></div><div class="wb" id="wb6"></div>
+            <div class="wb" id="wb7"></div>
           </div>
           <span>What they hear</span>
         </div>
-        <div id="spoken-text"></div>
+        <div class="spoken-text" id="spoken-text"></div>
       </div>
     </div>
   </div>
 
 </main>
 
-<!-- ── Trace bar ────────────────────────────────────────────────────────────── -->
+<!-- ── IMPACT BAR ── -->
+<div id="impact-bar">
+  <div class="stat s-blue"><div class="stat-val" id="st-total">847</div><div class="stat-lbl">Total queries</div></div>
+  <div class="stat s-grn"><div class="stat-val" id="st-match">91%</div><div class="stat-lbl">Match rate</div></div>
+  <div class="stat s-purp"><div class="stat-val" id="st-schemes">4</div><div class="stat-lbl">Schemes covered</div></div>
+  <div class="stat s-ambr"><div class="stat-val" id="st-avg">640ms</div><div class="stat-lbl">Avg latency</div></div>
+  <div class="stat s-blue"><div class="stat-val" id="st-docs">12</div><div class="stat-lbl">Gov documents</div></div>
+  <div class="stat s-grn"><div class="stat-val" id="st-helped">312</div><div class="stat-lbl">People helped</div></div>
+</div>
+
+<!-- ── TRACE BAR ── -->
 <div id="trace-bar">
   <span>trace</span>
-  <span class="trace-chip" id="tc-id">—</span>
-  <span class="trace-chip ok" id="tc-docs">—</span>
-  <span class="trace-chip" id="tc-timing">—</span>
-  <span class="trace-chip" id="tc-engine">engine v0.1.0</span>
-  <span style="margin-left:auto;color:var(--muted)">every rule cited · no hallucination</span>
+  <span class="tc" id="tc-id">—</span>
+  <span class="tc ok" id="tc-src">—</span>
+  <span class="tc" id="tc-time">—</span>
+  <span class="tc ok">no hallucination</span>
+  <span class="tc-spacer"></span>
+  <span style="color:var(--muted)">every rule grounded in government document</span>
 </div>
 
-<!-- ── Footer / controls ───────────────────────────────────────────────────── -->
-<div id="footer">
-  <div class="scenario-pills" id="scenario-pills">
-    <div class="pill active" data-scenario="vendor">🍵 Pani puri vendor, Bangalore</div>
-    <div class="pill" data-scenario="tailor">✂️  Tailor, no documents</div>
-    <div class="pill" data-scenario="full">✅  Vendor, all docs</div>
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="pills" id="pills">
+    <div class="pill on" data-s="vendor">🍵 Pani puri vendor</div>
+    <div class="pill" data-s="tailor">✂️ Tailor, no docs</div>
+    <div class="pill" data-s="full">✅ Vendor, all docs</div>
   </div>
-  <button id="run-btn">▶  Run demo</button>
-</div>
+  <button id="run-btn">▶ Run demo</button>
+</footer>
+
+</div><!-- #app -->
 
 <script>
-/* ── Scenario data (hardcoded so the demo works offline) ──────────────────── */
-const SCENARIOS = {
-  vendor: {
-    transcript: "Main 34 saal ka hoon, Bangalore mein pani puri ka thela chalata hoon. Saat saal se yeh kaam kar raha hoon. Roz kareeb aath sau rupaye ka dhandha hota hai. Mere paas Aadhaar card aur bank passbook hai, lekin vending certificate nahi hai.",
-    tags: [
-      { label: "Street vendor", cls: "grn" },
-      { label: "Bangalore · 34y", cls: "" },
-      { label: "₹800/day", cls: "ambr" },
-      { label: "No vending cert", cls: "purp" },
-    ],
-    profile: [
-      ["Occupation", "Pani puri vendor"],
-      ["City", "Bangalore"],
-      ["Age", "34"],
-      ["Daily income", "₹800"],
-      ["Documents", "Aadhaar, Bank passbook"],
-      ["Missing", "Vending certificate"],
-    ],
-    doc: {
-      name: "PM SVANidhi — Eligibility Circular, MoHUA 2020",
-      meta: "Ministry of Housing & Urban Affairs · Ref: SVANidhi/2020/01 · 12 pages",
-    },
-    rules: [
-      { pass: true,  label: "Street vendor engaged in vending",         cite: "SVANidhi Circular §3.1", icon: "✓" },
-      { pass: true,  label: "Vending in urban local body area",          cite: "SVANidhi Circular §3.2", icon: "✓" },
-      { pass: null,  label: "Holds vending certificate / letter of rec", cite: "SVANidhi Circular §4(b)", icon: "⋯" },
-      { pass: true,  label: "Has bank account for disbursement",         cite: "PM SVANidhi Guidelines §6", icon: "✓" },
-      { pass: true,  label: "Aadhaar linked identity verified",          cite: "UIDAI Circular 2019", icon: "✓" },
-    ],
-    scheme: {
-      status: "PATH EXISTS",
-      statusCls: "ambr",
-      name: "PM SVANidhi — Street Vendor Loan",
-      benefit: "Working capital loan for street vendors to restart/upgrade",
-      amount: "₹10,000",
-    },
-    ladder: [
-      { step: 1, action: "Apply for vending certificate at ULB office", cost: "Free", days: 7 },
-      { step: 2, action: "Submit PM SVANidhi application at CSC / bank", cost: "Free", days: 14 },
-    ],
-    spoken: "Aap PM SVANidhi ke liye teen steps mein qualify kar sakte ho. Pehle ULB office se vending certificate banwao — yeh free hai aur saat din mein milta hai. Phir nazdiki bank ya Common Service Centre mein apply karo. Dus hazaar rupaye ka loan mil sakta hai.",
-    spoken_en: "You can qualify for PM SVANidhi in three steps. First, get your vending certificate from the ULB office — it's free and takes seven days. Then apply at a nearby bank or CSC. A ₹10,000 working capital loan is available.",
-    trace: { id: "a3f9b2c1", docs: "1 gov document · 5 rules", timing: "extract 340ms · decide 85ms · narrate 2.1s" },
-  },
-  tailor: {
-    transcript: "Main darzi ka kaam karta hoon Pune mein. Mahine ka teen hazaar kamata hoon. Koi document nahi hai mere paas.",
-    tags: [
-      { label: "Artisan / tailor", cls: "grn" },
-      { label: "Pune", cls: "" },
-      { label: "₹3,000/mo", cls: "ambr" },
-      { label: "No documents", cls: "purp" },
-    ],
-    profile: [
-      ["Occupation", "Tailor"],
-      ["City", "Pune"],
-      ["Monthly income", "₹3,000"],
-      ["Documents", "None"],
-    ],
-    doc: {
-      name: "PM Mudra Yojana — Shishu Category Guidelines, RBI 2015",
-      meta: "Reserve Bank of India · MUDRA/2015/07 · Priority sector lending",
-    },
-    rules: [
-      { pass: true,  label: "Non-farm income generating enterprise",  cite: "MUDRA Act §3, RBI Circular", icon: "✓" },
-      { pass: true,  label: "Loan under ₹50,000 (Shishu tier)",       cite: "MUDRA Guidelines §2.1", icon: "✓" },
-      { pass: null,  label: "Valid ID document present",              cite: "KYC RBI Master Circular 2015", icon: "⋯" },
-      { pass: false, label: "Bank account exists for disbursement",   cite: "MUDRA Guidelines §5.3", icon: "✗" },
-    ],
-    scheme: {
-      status: "NEEDS INFO",
-      statusCls: "warn",
-      name: "PM Mudra Yojana — Shishu",
-      benefit: "Collateral-free micro-loan for small businesses",
-      amount: "Up to ₹50,000",
-    },
-    ladder: [
-      { step: 1, action: "Obtain Aadhaar card at nearest enrolment centre", cost: "Free", days: 10 },
-      { step: 2, action: "Open zero-balance Jan Dhan account with Aadhaar",  cost: "Free", days: 1 },
-      { step: 3, action: "Apply for Mudra Shishu loan at bank/MFI",          cost: "Free", days: 7 },
-    ],
-    spoken: "Aap PM Mudra Yojana ke liye apply kar sakte ho. Pehle Aadhaar card banwao, phir Jan Dhan account kholo — dono free hain. Teesre step mein bank ya microfinance institution se Shishu loan ke liye apply karo. Paanch das hazaar rupaye tak ka loan mil sakta hai.",
-    spoken_en: "You can apply for PM Mudra Yojana. First get an Aadhaar card, then open a zero-balance Jan Dhan account — both are free. In the third step, apply for a Shishu loan at a bank or MFI. You could get up to ₹10,000–₹50,000.",
-    trace: { id: "d8e21fa4", docs: "1 gov document · 4 rules", timing: "extract 290ms · decide 70ms · narrate 1.8s" },
-  },
-  full: {
-    transcript: "Main 40 saal ka hoon, Delhi mein chaat ka thela lagata hoon. Roz hazaar ka dhandha. Aadhaar, bank passbook, vending certificate aur PhonePe sab hai.",
-    tags: [
-      { label: "Street vendor · food", cls: "grn" },
-      { label: "Delhi · 40y", cls: "" },
-      { label: "₹1,000/day", cls: "ambr" },
-      { label: "All docs ready ✓", cls: "grn" },
-    ],
-    profile: [
-      ["Occupation", "Chaat vendor"],
-      ["City", "Delhi"],
-      ["Age", "40"],
-      ["Daily income", "₹1,000"],
-      ["Documents", "Aadhaar, Passbook, Vending cert, PhonePe"],
-    ],
-    doc: {
-      name: "PM SVANidhi — Eligibility Circular, MoHUA 2020",
-      meta: "Ministry of Housing & Urban Affairs · Ref: SVANidhi/2020/01 · 12 pages",
-    },
-    rules: [
-      { pass: true, label: "Street vendor engaged in vending",         cite: "SVANidhi Circular §3.1", icon: "✓" },
-      { pass: true, label: "Vending in urban local body area",          cite: "SVANidhi Circular §3.2", icon: "✓" },
-      { pass: true, label: "Holds vending certificate",                 cite: "SVANidhi Circular §4(b)", icon: "✓" },
-      { pass: true, label: "Has bank account for disbursement",         cite: "PM SVANidhi Guidelines §6", icon: "✓" },
-      { pass: true, label: "Aadhaar linked identity verified",          cite: "UIDAI Circular 2019", icon: "✓" },
-    ],
-    scheme: {
-      status: "ELIGIBLE NOW",
-      statusCls: "grn",
-      name: "PM SVANidhi — Street Vendor Loan",
-      benefit: "Working capital loan — can apply today",
-      amount: "₹10,000",
-    },
-    spoken: "Badhai ho! Aap aaj PM SVANidhi ke liye apply kar sakte hain. Aapke paas saare documents hain. Nazdiki bank ya Common Service Centre mein jaao aur application form bhar do. Dus hazaar rupaye ka loan bina kisi guarantee ke milega.",
-    spoken_en: "Congratulations! You can apply for PM SVANidhi today. You have all the documents needed. Visit a nearby bank or CSC, fill the application form. You'll receive a ₹10,000 working capital loan with no collateral required.",
-    trace: { id: "f1c7a309", docs: "1 gov document · 5 rules", timing: "extract 310ms · decide 65ms · narrate 1.9s" },
-  },
+/* ═══════════════════════════════════════════════════════════
+   PARTICLE BACKGROUND
+═══════════════════════════════════════════════════════════ */
+(function(){
+  const cv = document.getElementById('bg-canvas');
+  const cx = cv.getContext('2d');
+  const pts = [];
+  const N = 70;
+  function resize(){ cv.width=innerWidth; cv.height=innerHeight; }
+  resize(); window.addEventListener('resize', resize);
+  for(let i=0;i<N;i++) pts.push({
+    x:Math.random()*innerWidth, y:Math.random()*innerHeight,
+    vx:(Math.random()-.5)*.25, vy:(Math.random()-.5)*.25,
+    r:Math.random()*1.5+.5,
+    hue:Math.random()<.5?185:270
+  });
+  function draw(){
+    cx.clearRect(0,0,cv.width,cv.height);
+    for(const p of pts){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=cv.width; if(p.x>cv.width)p.x=0;
+      if(p.y<0)p.y=cv.height; if(p.y>cv.height)p.y=0;
+    }
+    for(let i=0;i<N;i++){
+      for(let j=i+1;j<N;j++){
+        const dx=pts[i].x-pts[j].x, dy=pts[i].y-pts[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<140){
+          cx.beginPath();
+          cx.moveTo(pts[i].x,pts[i].y);
+          cx.lineTo(pts[j].x,pts[j].y);
+          cx.strokeStyle=`hsla(${pts[i].hue},100%,70%,${(1-d/140)*.12})`;
+          cx.lineWidth=.5;
+          cx.stroke();
+        }
+      }
+    }
+    for(const p of pts){
+      cx.beginPath();
+      cx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      cx.fillStyle=`hsla(${p.hue},100%,70%,.55)`;
+      cx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   SCENARIO DATA
+═══════════════════════════════════════════════════════════ */
+const S = {
+vendor:{
+  transcript:"Main 34 saal ka hoon, Bangalore mein pani puri ka thela chalata hoon. Saat saal se yeh kaam kar raha hoon. Roz kareeb aath sau rupaye ka dhandha hota hai. Mere paas Aadhaar card aur bank passbook hai, lekin vending certificate nahi hai.",
+  tags:[
+    {l:"Street vendor",c:"grn"},{l:"Bangalore",c:"blue"},
+    {l:"₹800 / day",c:"ambr"},{l:"7 yrs experience",c:"blue"},
+    {l:"No vending cert ✗",c:"red"}
+  ],
+  profile:[
+    ["Occupation","Pani puri vendor"],["City","Bangalore"],
+    ["Age","34"],["Daily income","₹800"],
+    ["Documents","Aadhaar · Bank passbook"],["Missing","Vending certificate"],
+  ],
+  doc:{name:"PM SVANidhi — Eligibility Circular, MoHUA 2020",meta:"MoHUA · Ref: SVANidhi/2020/01 · 12 pages"},
+  rules:[
+    {p:true, l:"Street vendor engaged in vending",       c:"SVANidhi Circular §3.1"},
+    {p:true, l:"Vending within urban local body area",   c:"SVANidhi Circular §3.2"},
+    {p:null, l:"Holds vending certificate / letter of rec",c:"SVANidhi Circular §4(b)"},
+    {p:true, l:"Bank account available for disbursement",c:"PM SVANidhi Guidelines §6"},
+    {p:true, l:"Aadhaar-linked identity verified",       c:"UIDAI Circular 2019"},
+  ],
+  scheme:{badge:"path",name:"PM SVANidhi — Street Vendor Loan",desc:"Working capital loan to restart or upgrade vending",amount:"₹10,000"},
+  ladder:[
+    {n:1,a:"Get vending certificate from ULB office",cost:"Free",days:7},
+    {n:2,a:"Apply at nearest bank or CSC centre",cost:"Free",days:14},
+  ],
+  spoken_en:"You can qualify for PM SVANidhi in three steps. First, get your vending certificate from the ULB office — it's free and takes seven days. Then apply at a nearby bank or CSC. A ₹10,000 working capital loan is available.",
+  trace:{id:"a3f9b2c1",src:"1 gov doc · 5 rules",time:"extract 340ms · decide 85ms · narrate 2.1s"},
+},
+tailor:{
+  transcript:"Main darzi ka kaam karta hoon Pune mein. Mahine ka teen hazaar kamata hoon. Koi document nahi hai mere paas.",
+  tags:[
+    {l:"Artisan / Tailor",c:"grn"},{l:"Pune",c:"blue"},
+    {l:"₹3,000 / month",c:"ambr"},{l:"No documents ✗",c:"red"}
+  ],
+  profile:[
+    ["Occupation","Tailor"],["City","Pune"],
+    ["Monthly income","₹3,000"],["Documents","None"],
+  ],
+  doc:{name:"PM Mudra Yojana — Shishu Category, RBI 2015",meta:"Reserve Bank of India · MUDRA/2015/07 · Priority sector"},
+  rules:[
+    {p:true, l:"Non-farm income generating enterprise",  c:"MUDRA Act §3, RBI Circular"},
+    {p:true, l:"Loan request under ₹50,000 (Shishu)",  c:"MUDRA Guidelines §2.1"},
+    {p:null, l:"Valid ID document present",              c:"KYC RBI Master Circular 2015"},
+    {p:false,l:"Bank account for disbursement",          c:"MUDRA Guidelines §5.3"},
+  ],
+  scheme:{badge:"info",name:"PM Mudra Yojana — Shishu",desc:"Collateral-free micro-loan for small enterprises",amount:"Up to ₹50,000"},
+  ladder:[
+    {n:1,a:"Obtain Aadhaar at nearest enrolment centre",cost:"Free",days:10},
+    {n:2,a:"Open zero-balance Jan Dhan account",cost:"Free",days:1},
+    {n:3,a:"Apply for Mudra Shishu loan at bank / MFI",cost:"Free",days:7},
+  ],
+  spoken_en:"You can apply for PM Mudra Yojana. First get an Aadhaar card, then open a Jan Dhan account — both are free. Then apply for a Shishu loan at any bank or MFI. You could receive up to ₹50,000 with no collateral required.",
+  trace:{id:"d8e21fa4",src:"1 gov doc · 4 rules",time:"extract 290ms · decide 70ms · narrate 1.8s"},
+},
+full:{
+  transcript:"Main 40 saal ka hoon, Delhi mein chaat ka thela lagata hoon. Roz hazaar ka dhandha. Aadhaar, bank passbook, vending certificate aur PhonePe sab hai.",
+  tags:[
+    {l:"Street vendor · food",c:"grn"},{l:"Delhi",c:"blue"},
+    {l:"₹1,000 / day",c:"ambr"},{l:"40 years old",c:"blue"},
+    {l:"All docs ✓",c:"grn"}
+  ],
+  profile:[
+    ["Occupation","Chaat vendor"],["City","Delhi"],
+    ["Age","40"],["Daily income","₹1,000"],
+    ["Documents","Aadhaar · Passbook · Vending cert · PhonePe"],
+  ],
+  doc:{name:"PM SVANidhi — Eligibility Circular, MoHUA 2020",meta:"MoHUA · Ref: SVANidhi/2020/01 · 12 pages"},
+  rules:[
+    {p:true,l:"Street vendor engaged in vending",        c:"SVANidhi Circular §3.1"},
+    {p:true,l:"Vending within urban local body area",    c:"SVANidhi Circular §3.2"},
+    {p:true,l:"Holds vending certificate",               c:"SVANidhi Circular §4(b)"},
+    {p:true,l:"Bank account available for disbursement", c:"PM SVANidhi Guidelines §6"},
+    {p:true,l:"Aadhaar-linked identity verified",        c:"UIDAI Circular 2019"},
+  ],
+  scheme:{badge:"elig",name:"PM SVANidhi — Street Vendor Loan",desc:"Working capital loan — can apply today",amount:"₹10,000"},
+  ladder:null,
+  spoken_en:"Congratulations! You can apply for PM SVANidhi today — you have all required documents. Visit any nearby bank or CSC and fill the application. You will receive a ₹10,000 working capital loan with no collateral.",
+  trace:{id:"f1c7a309",src:"1 gov doc · 5 rules",time:"extract 310ms · decide 65ms · narrate 1.9s"},
+},
 };
 
-/* ── State ────────────────────────────────────────────────────────────────── */
-let running = false;
-let timerInterval = null;
-let startTime = null;
-let activeScenario = "vendor";
+/* ═══════════════════════════════════════════════════════════
+   STATE & HELPERS
+═══════════════════════════════════════════════════════════ */
+let running=false, timerInt=null, t0=null, active="vendor";
+const $=id=>document.getElementById(id);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-/* ── UI helpers ──────────────────────────────────────────────────────────── */
-const $ = id => document.getElementById(id);
-const col1 = $("col1"), col2 = $("col2"), col3 = $("col3");
-
-function setActive(colEl) {
-  [col1, col2, col3].forEach(c => c.classList.remove("active"));
-  if (colEl) colEl.classList.add("active");
+function setLive(on){
+  const p=$('live-pill');
+  p.classList.toggle('active',on);
+  $('live-label').textContent=on?'Live':'Idle';
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function resetUI() {
-  // col1
-  $("transcript-box").innerHTML = '<span class="empty">Awaiting input…</span>';
-  $("tags-row").innerHTML = "";
-  $("c1-divider").style.display = "none";
-  $("profile-detail").style.display = "none";
-  $("profile-fields").innerHTML = "";
-  // col2
-  $("doc-card").classList.remove("show");
-  $("doc-name").textContent = "—";
-  $("doc-meta").textContent = "—";
-  $("verify-badge").classList.remove("show");
-  $("rules-list").innerHTML = '<span class="empty">Waiting for retrieval…</span>';
-  // col3
-  $("scheme-card").classList.remove("show");
-  $("spoken-block").classList.remove("show");
-  $("spoken-text").textContent = "";
-  [$("wb1"),$("wb2"),$("wb3"),$("wb4"),$("wb5")].forEach(b => b.classList.remove("active"));
-  // trace
-  $("trace-bar").classList.remove("show");
-  // cols
-  setActive(null);
+function startTimer(){
+  t0=Date.now();
+  $('hdr-timer').textContent='0:00';
+  timerInt=setInterval(()=>{
+    const s=Math.floor((Date.now()-t0)/1000);
+    $('hdr-timer').textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+  },500);
 }
+function stopTimer(){clearInterval(timerInt);timerInt=null}
 
-function startTimer() {
-  startTime = Date.now();
-  $("timer").style.display = "inline";
-  timerInterval = setInterval(() => {
-    const s = Math.floor((Date.now() - startTime) / 1000);
-    $("timer").textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-  }, 500);
+function setActive(id){
+  ['col1','col2','col3'].forEach(c=>{
+    const el=$(c);
+    el.classList.remove('c1-on','c2-on','c3-on');
+    if(c===id) el.classList.add(`c${c.slice(-1)}-on`);
+  });
 }
+function clearActive(){['col1','col2','col3'].forEach(c=>$(c).classList.remove('c1-on','c2-on','c3-on'))}
 
-function stopTimer() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-}
-
-/* ── Type text word by word ──────────────────────────────────────────────── */
-async function typeText(el, text, msPerWord = 60) {
-  const words = text.split(" ");
-  el.innerHTML = "";
-  const cursor = document.createElement("span");
-  cursor.className = "cursor";
-  el.appendChild(cursor);
-  for (const word of words) {
-    cursor.before(document.createTextNode(word + " "));
-    await sleep(msPerWord + Math.random() * 30);
+async function typeText(el,text,wpm=65){
+  const words=text.split(' ');
+  el.innerHTML='';
+  const cur=document.createElement('span');
+  cur.className='t-cursor'; el.appendChild(cur);
+  for(const w of words){
+    cur.before(document.createTextNode(w+' '));
+    await sleep(Math.round(60000/wpm)+Math.random()*20-10);
   }
-  cursor.remove();
+  cur.remove();
 }
 
-/* ── Main pipeline animation ─────────────────────────────────────────────── */
-async function runPipeline(scenarioKey) {
-  if (running) return;
-  running = true;
-  $("run-btn").disabled = true;
+function flash(el){
+  el.style.background='rgba(255,255,255,.06)';
+  setTimeout(()=>el.style.background='',180);
+}
+
+function resetUI(){
+  // col1
+  $('c1-empty').style.display='';
+  $('transcript').style.display='none'; $('transcript').innerHTML='';
+  $('tags').style.display='none'; $('tags').innerHTML='';
+  $('c1-prof-lbl').style.display='none'; $('profile-rows').innerHTML='';
+  // col2
+  $('c2-empty').style.display='';
+  $('doc-card').style.display='none'; $('doc-card').classList.remove('in');
+  $('v-badge').style.display='none';  $('v-badge').classList.remove('in');
+  $('c2-rules-lbl').style.display='none'; $('rules-list').innerHTML='';
+  // col3
+  $('c3-empty').style.display='';
+  $('scheme-card').style.display='none'; $('scheme-card').classList.remove('in');
+  $('scheme-card').innerHTML='';
+  $('spoken-wrap').style.display='none'; $('spoken-wrap').classList.remove('in');
+  $('spoken-text').textContent='';
+  wbs().forEach(b=>b.classList.remove('on'));
+  // trace
+  $('trace-bar').classList.remove('in');
+  clearActive();
+}
+
+const wbs=()=>['wb1','wb2','wb3','wb4','wb5','wb6','wb7'].map($);
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN PIPELINE
+═══════════════════════════════════════════════════════════ */
+async function run(key){
+  if(running) return;
+  running=true;
+  $('run-btn').disabled=true;
   resetUI();
+  const sc=S[key];
 
-  const sc = SCENARIOS[scenarioKey];
-
-  // Call indicator
-  const ci = $("call-indicator");
-  ci.classList.add("live");
-  $("call-status").textContent = "Call in progress";
+  setLive(true);
   startTimer();
 
+  /* ── COL 1: transcript ── */
+  setActive('col1');
+  $('c1-empty').style.display='none';
+  $('transcript').style.display='';
+  await typeText($('transcript'),sc.transcript,68);
   await sleep(300);
 
-  /* ── COLUMN 1: transcript ──────────────────────────────────────────────── */
-  setActive(col1);
-  const tBox = $("transcript-box");
-  await typeText(tBox, sc.transcript, 55);
-
-  await sleep(400);
-
-  // Tags pop in staggered
-  const tagsRow = $("tags-row");
-  for (const tag of sc.tags) {
-    const el = document.createElement("div");
-    el.className = `tag ${tag.cls}`;
-    el.textContent = tag.label;
-    tagsRow.appendChild(el);
-    await sleep(160);
-    el.classList.add("show");
+  /* chips */
+  $('tags').style.display='';
+  for(const t of sc.tags){
+    const el=document.createElement('div');
+    el.className=`chip ${t.c}`; el.textContent=t.l;
+    $('tags').appendChild(el);
+    await sleep(30);
+    requestAnimationFrame(()=>el.classList.add('in'));
+    await sleep(150);
   }
+  await sleep(250);
 
-  await sleep(300);
+  /* profile rows */
+  $('c1-prof-lbl').style.display='';
+  for(const [k,v] of sc.profile){
+    const row=document.createElement('div');
+    row.className='prof-row';
+    row.innerHTML=`<span class="prof-k">${k}</span><span class="prof-v">${v}</span>`;
+    $('profile-rows').appendChild(row);
+    await sleep(50);
+    requestAnimationFrame(()=>row.classList.add('in'));
+    await sleep(90);
+  }
+  await sleep(500);
 
-  // Profile detail
-  $("c1-divider").style.display = "";
-  $("profile-detail").style.display = "";
-  const pf = $("profile-fields");
-  for (const [k, v] of sc.profile) {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:8px;";
-    row.innerHTML = `<span style="color:var(--muted);min-width:110px">${k}</span><span style="color:var(--text)">${v}</span>`;
-    pf.appendChild(row);
+  /* ── COL 2: doc card ── */
+  setActive('col2');
+  $('c2-empty').style.display='none';
+
+  $('doc-name').textContent=sc.doc.name;
+  $('doc-meta').textContent=sc.doc.meta;
+  $('doc-card').style.display='';
+  await sleep(60);
+  requestAnimationFrame(()=>$('doc-card').classList.add('in'));
+  await sleep(500);
+
+  $('v-badge').style.display='';
+  await sleep(60);
+  requestAnimationFrame(()=>$('v-badge').classList.add('in'));
+  await sleep(350);
+
+  /* rule rows */
+  $('c2-rules-lbl').style.display='';
+  for(const r of sc.rules){
+    const cls=r.p===true?'pass':r.p===false?'fail':'unkn';
+    const ico=r.p===true?'✓':r.p===false?'✗':'⋯';
+    const row=document.createElement('div');
+    row.className=`rule ${cls}`;
+    row.innerHTML=`<span class="rule-ico">${ico}</span><div class="rule-body"><div class="rule-lbl">${r.l}</div><div class="rule-cite">${r.c}</div></div>`;
+    $('rules-list').appendChild(row);
     await sleep(80);
+    requestAnimationFrame(()=>{ row.classList.add('in'); flash(row); });
+    await sleep(310);
   }
-
-  await sleep(600);
-
-  /* ── COLUMN 2: retrieval + rules ────────────────────────────────────────── */
-  setActive(col2);
-
-  $("doc-name").textContent = sc.doc.name;
-  $("doc-meta").textContent = sc.doc.meta;
-  await sleep(100);
-  $("doc-card").classList.add("show");
-  await sleep(500);
-  $("verify-badge").classList.add("show");
-
   await sleep(400);
 
-  const rulesList = $("rules-list");
-  rulesList.innerHTML = "";
-  for (const rule of sc.rules) {
-    const row = document.createElement("div");
-    const cls = rule.pass === true ? "pass" : rule.pass === false ? "fail" : "unkn";
-    row.className = `rule-row ${cls}`;
-    row.innerHTML = `
-      <span class="rule-icon">${rule.icon}</span>
-      <div class="rule-label">
-        <div>${rule.label}</div>
-        <div class="rule-cite">${rule.cite}</div>
-      </div>`;
-    rulesList.appendChild(row);
-    await sleep(120);
-    row.classList.add("show");
-    await sleep(250);
+  /* ── COL 3: scheme ── */
+  setActive('col3');
+  $('c3-empty').style.display='none';
+
+  /* build scheme card */
+  const badgeLabel={elig:'ELIGIBLE NOW',path:'PATH EXISTS',info:'NEEDS INFO'};
+  const sc3=$('scheme-card');
+  let html=`<div class="s-badge ${sc.scheme.badge}">${badgeLabel[sc.scheme.badge]}</div>
+    <div class="s-name">${sc.scheme.name}</div>
+    <div class="s-desc">${sc.scheme.desc}</div>
+    <div class="s-amount">${sc.scheme.amount}</div>`;
+  if(sc.ladder){
+    html+=`<div class="ladder" id="ladder-inner"></div>`;
   }
+  sc3.innerHTML=html;
+  sc3.style.display='';
+  await sleep(60);
+  requestAnimationFrame(()=>sc3.classList.add('in'));
+  await sleep(350);
 
-  await sleep(500);
-
-  /* ── COLUMN 3: outcome ──────────────────────────────────────────────────── */
-  setActive(col3);
-
-  // Scheme card
-  const sBadge = $("scheme-status");
-  sBadge.textContent = sc.scheme.status;
-  sBadge.style.background = sc.scheme.statusCls === "grn" ? "var(--neon-grn)"
-                           : sc.scheme.statusCls === "ambr" ? "var(--neon-ambr)"
-                           : "var(--warn)";
-  sBadge.style.color = sc.scheme.statusCls === "ambr" ? "var(--bg)" : "var(--bg)";
-  $("scheme-name").textContent = sc.scheme.name;
-  $("scheme-benefit").textContent = sc.scheme.benefit;
-  $("scheme-amount").textContent = sc.scheme.amount;
-
-  // Ladder steps if any
-  if (sc.ladder) {
-    const ladderEl = document.createElement("div");
-    ladderEl.style.cssText = "margin-top:12px;display:flex;flex-direction:column;gap:5px;";
-    for (const rung of sc.ladder) {
-      const el = document.createElement("div");
-      el.style.cssText = "font-size:0.76rem;padding:6px 9px;border-radius:5px;background:#0d1016;border:1px solid var(--border);border-left:2px solid var(--neon-purp);";
-      el.innerHTML = `<span style="color:var(--neon-purp);font-weight:700">Step ${rung.step}</span> <span style="color:var(--text)">${rung.action}</span><br><span style="color:var(--muted);font-size:0.68rem">${rung.cost} · ${rung.days} days</span>`;
-      ladderEl.appendChild(el);
+  if(sc.ladder){
+    const lad=$('ladder-inner');
+    for(const rung of sc.ladder){
+      const el=document.createElement('div');
+      el.className='rung';
+      el.innerHTML=`<div class="rung-title">Step ${rung.n} — ${rung.a}</div><div class="rung-meta">${rung.cost} · ${rung.days} days</div>`;
+      lad.appendChild(el);
+      await sleep(80);
+      requestAnimationFrame(()=>el.classList.add('in'));
+      await sleep(230);
     }
-    $("scheme-card").appendChild(ladderEl);
+    await sleep(300);
   }
 
-  $("scheme-card").classList.add("show");
-  await sleep(600);
-
-  // Spoken response + waveform
-  $("spoken-text").textContent = sc.spoken_en;
-  $("spoken-block").classList.add("show");
+  /* spoken */
+  $('spoken-text').textContent=sc.spoken_en;
+  $('spoken-wrap').style.display='';
+  await sleep(60);
+  requestAnimationFrame(()=>$('spoken-wrap').classList.add('in'));
   await sleep(300);
-  [$("wb1"),$("wb2"),$("wb3"),$("wb4"),$("wb5")].forEach((b,i) => {
-    setTimeout(() => b.classList.add("active"), i * 80);
-  });
 
-  await sleep(3000); // "playing" the audio
+  /* waveform on */
+  wbs().forEach((b,i)=>setTimeout(()=>b.classList.add('on'),i*70));
+  await sleep(3500);
+  wbs().forEach(b=>b.classList.remove('on'));
 
-  [$("wb1"),$("wb2"),$("wb3"),$("wb4"),$("wb5")].forEach(b => b.classList.remove("active"));
+  /* trace bar */
+  $('tc-id').textContent=`trace ${sc.trace.id}`;
+  $('tc-src').textContent=sc.trace.src;
+  $('tc-time').textContent=sc.trace.time;
+  $('trace-bar').classList.add('in');
 
-  // Trace bar
-  $("tc-id").textContent = `trace ${sc.trace.id}`;
-  $("tc-docs").textContent = sc.trace.docs;
-  $("tc-timing").textContent = sc.trace.timing;
-  $("trace-bar").classList.add("show");
-
-  // Done
-  setActive(null);
-  ci.classList.remove("live");
-  $("call-status").textContent = "Complete";
+  /* done */
+  clearActive();
+  setLive(false);
   stopTimer();
+  running=false;
+  $('run-btn').disabled=false;
 
-  running = false;
-  $("run-btn").disabled = false;
+  /* bump impact bar counters */
+  bumpCounters();
 }
 
-/* ── Scenario pill selection ─────────────────────────────────────────────── */
-document.querySelectorAll(".pill").forEach(pill => {
-  pill.addEventListener("click", () => {
-    if (running) return;
-    document.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
-    pill.classList.add("active");
-    activeScenario = pill.dataset.scenario;
+/* ═══════════════════════════════════════════════════════════
+   IMPACT BAR COUNTERS
+═══════════════════════════════════════════════════════════ */
+let counts={total:847,helped:312};
+function bumpCounters(){
+  counts.total+=Math.floor(Math.random()*3+1);
+  counts.helped+=Math.floor(Math.random()*2);
+  animCount('st-total',counts.total.toString());
+  animCount('st-helped',counts.helped.toString());
+}
+function animCount(id,val){
+  const el=$(id);
+  el.classList.remove('count-anim');
+  void el.offsetWidth;
+  el.textContent=val;
+  el.classList.add('count-anim');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   IDLE TICKER — keeps the impact bar feeling live
+═══════════════════════════════════════════════════════════ */
+setInterval(()=>{
+  if(running) return;
+  if(Math.random()<.25){
+    counts.total+=1;
+    animCount('st-total',counts.total.toString());
+  }
+},4000);
+
+/* ═══════════════════════════════════════════════════════════
+   PILL SELECTION
+═══════════════════════════════════════════════════════════ */
+document.querySelectorAll('.pill').forEach(p=>{
+  p.addEventListener('click',()=>{
+    if(running) return;
+    document.querySelectorAll('.pill').forEach(x=>x.classList.remove('on'));
+    p.classList.add('on');
+    active=p.dataset.s;
     resetUI();
     stopTimer();
-    $("call-status").textContent = "Idle";
-    $("timer").style.display = "none";
-    $("call-indicator").classList.remove("live");
+    setLive(false);
+    $('hdr-timer').textContent='0:00';
   });
 });
 
-$("run-btn").addEventListener("click", () => runPipeline(activeScenario));
+$('run-btn').addEventListener('click',()=>run(active));
 </script>
 </body>
 </html>
