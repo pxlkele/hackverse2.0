@@ -175,6 +175,147 @@ def rank_decisions(profile: Profile, decisions: list[Decision]) -> list[Decision
     )
 
 
+UI_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "ui_cache"
+
+# Names that must never be translated. These are how the scheme is written on the
+# form, on the bank's poster and in the clerk's system — a vendor who asks for a
+# translated name gets a blank look. Latin here is not laziness, it is the thing
+# that makes the advice usable.
+# Only the scheme identifiers. These are brands: they appear on the form, the
+# bank's poster and the clerk's screen exactly like this, and a caller who asks
+# for a translated one gets a blank look.
+#
+# Aadhaar, Jan Dhan and UPI deliberately are NOT here. They have standard native
+# spellings — आधार, जन धन — that every speaker recognises, and demanding Latin
+# for them rejected perfectly good translations: that mistake left every rung
+# mentioning Aadhaar or Jan Dhan in English, which is most of the ladder.
+KEEP_VERBATIM = ("PM SVANidhi", "SVANidhi", "FSSAI", "PMSBY", "PMJJBY")
+
+UI_SYSTEM = """Translate the phrase into the requested language.
+
+Rules:
+- Output ONLY the translation. No quotes, no notes, no alternatives.
+- Keep every scheme name, document name and abbreviation EXACTLY as given, in
+  Latin script: PM SVANidhi, FSSAI, PMSBY, PMJJBY, Aadhaar, Jan Dhan, UPI, LoR,
+  CSC. These are what a bank clerk recognises.
+- Keep every number and every rupee figure exactly as given.
+- This is read off a phone screen by someone with low literacy: short, plain,
+  spoken register. No formal or bureaucratic wording."""
+
+
+def translate_ui(text: str, lang: str, allow_llm: bool = True) -> str:
+    """
+    Translate one short interface string, cached on disk forever.
+
+    The ladder steps live in schemes.yaml in English, so the cards on the phone
+    stayed English while the spoken answer was in the caller's language — the two
+    halves of the same reply disagreeing with each other.
+
+    Cached per (text, language) because these strings are a fixed, small set: four
+    schemes' rungs, and they never change between runs. Pre-cache them with
+    precache_ui() and this costs nothing at demo time. Uncached it costs an LLM
+    call, so it must never be on the critical path unprepared.
+    """
+    if lang == "en" or not text or not text.strip():
+        return text
+
+    # A string that is *only* a scheme name has nothing to translate. Short-circuit
+    # rather than spend an LLM call to be told so.
+    if text.strip() in KEEP_VERBATIM or text.strip() in ("FSSAI Basic Registration",):
+        return text
+
+    key = hashlib.sha1(f"{lang}:{text}".encode()).hexdigest()[:20]
+    path = UI_CACHE_DIR / f"{key}.txt"
+    if path.exists():
+        return path.read_text()
+
+    # Serving a request: never pay for a translation now. Fifteen card strings at
+    # a few seconds each would add over a minute to the answer, which is worse
+    # than an English card by a wide margin. Return English and let precache_ui
+    # fill this in before the demo.
+    if not allow_llm:
+        return text
+
+    language = LANG_NAMES.get(lang, "Hindi")
+    try:
+        out = " ".join(
+            chat(prompt=f"Into {language}:\n\n{text}", system=UI_SYSTEM, temperature=0.0).split()
+        )
+    except Exception:  # noqa: BLE001 - English on the card beats no card
+        return text
+
+    # A translation that dropped the scheme name is worse than no translation:
+    # the caller cannot act on a name that is not there.
+    for name in KEEP_VERBATIM:
+        if name.lower() in text.lower() and name.lower() not in out.lower():
+            return text
+    if not out or len(out) > 4 * len(text) + 40:
+        return text          # runaway output, almost always an explanation
+
+    UI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(out)
+    return out
+
+
+def localise_decisions(decisions: list[Decision], lang: str) -> list[dict]:
+    """
+    Decisions as dicts, with the caller-facing strings in their language.
+
+    Returns plain dicts rather than Decision objects: the schemas are frozen by
+    team agreement, and a display translation has no business in the audited
+    record of what the rules decided.
+    """
+    out: list[dict] = []
+    for decision in decisions:
+        data = decision.model_dump(mode="json")
+        # Cache-only: this runs while a caller is waiting.
+        data["scheme_name_local"] = translate_ui(decision.scheme_name or "", lang, allow_llm=False)
+        data["benefit_summary_local"] = translate_ui(
+            decision.benefit_summary or "", lang, allow_llm=False
+        )
+        for rung, raw in zip(decision.ladder or [], data.get("ladder") or []):
+            raw["action_local"] = translate_ui(rung.action or "", lang, allow_llm=False)
+            raw["where_local"] = translate_ui(rung.where or "", lang, allow_llm=False)
+        out.append(data)
+    return out
+
+
+def card_strings() -> list[str]:
+    """
+    Every string that can ever appear on a card, taken from schemes.yaml.
+
+    Enumerating the catalogue rather than one profile's ladder, because which
+    rungs appear depends on which documents the caller lacks. A pre-cache built
+    from a single well-documented vendor missed the "Enrol for Aadhaar" rung
+    entirely — so the one caller who needed it, the least-documented one, got an
+    English card.
+    """
+    schemes = eligibility.load_schemes()
+    found: list[str] = []
+    for scheme in schemes.get("schemes", []):
+        for key in ("name", "benefit_summary"):
+            if scheme.get(key):
+                found.append(str(scheme[key]))
+        for rule in scheme.get("rules", []):
+            remedy = rule.get("remedy") or {}
+            for key in ("action", "where"):
+                if remedy.get(key):
+                    found.append(str(remedy[key]))
+    return sorted(set(found))
+
+
+def precache_ui(languages: tuple[str, ...] | list[str]) -> int:
+    """Translate every card string into every language, once, before the demo."""
+    done = 0
+    for lang in languages:
+        if lang == "en":
+            continue
+        for text in card_strings():
+            translate_ui(text, lang)
+            done += 1
+    return done
+
+
 def narrate_all(profile: Profile, decisions: list[Decision], lang: str = "hi") -> str:
     """
     The whole answer, spoken, in the order the caller cares about: what they

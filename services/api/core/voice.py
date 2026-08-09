@@ -170,6 +170,60 @@ def transcribe(audio_path: str | Path, language: str = "hi") -> str:
     return result.get("text", "")
 
 
+# How sure Whisper must be before we override the language the client asked for.
+# Measured on synthesised speech in all eight: mr .99, ta .99, te .98, hi .97,
+# kn .95, bn .68 — all comfortably over. Gujarati lands at .44 and English is
+# misread as Hindi at .36, so the threshold sits above both: a weak guess loses
+# to what the caller actually selected, which is the safer of the two errors.
+DETECT_FLOOR = 0.60
+
+
+def transcribe_auto(
+    audio_path: str | Path, default_language: str = "hi"
+) -> tuple[str, str, float]:
+    """
+    Speech -> (text, language, confidence), detecting the language from the audio.
+
+    A vendor should not have to find their language on a screen before speaking —
+    the whole premise is that speaking is the interface. So we listen first and
+    answer in whatever they used, falling back to their selection when the guess
+    is weak.
+
+    Detection runs on `small` even for Telugu and Kannada, which need `medium` to
+    transcribe: identifying a language is a far easier problem than transcribing
+    it, and `small` gets te and kn right at .98 and .95. When the detection lands
+    on one of those two we re-run on medium for the transcript itself, so the
+    extra cost falls only on the languages that need it.
+    """
+    detected, confidence = default_language, 0.0
+    try:
+        segments, info = _whisper(WHISPER_SIZE).transcribe(
+            str(audio_path), language=None, vad_filter=True, beam_size=5,
+            condition_on_previous_text=False, compression_ratio_threshold=2.4,
+        )
+        text = " ".join(s.text.strip() for s in segments).strip()
+        confidence = float(getattr(info, "language_probability", 0.0) or 0.0)
+        guess = getattr(info, "language", None)
+        if guess in ASR_LANGUAGES and confidence >= DETECT_FLOOR:
+            detected = guess
+        else:
+            # Weak or unsupported guess: keep the caller's choice, and redo the
+            # transcript in it — a Hindi decode of Marathi audio is not what we
+            # want to hand the parser.
+            text = transcribe(audio_path, language=default_language)
+            return text, default_language, confidence
+    except VoiceError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise VoiceError(f"language detection failed: {exc}") from exc
+
+    # The two languages `small` cannot transcribe, only recognise.
+    if ASR_MODEL_FOR.get(detected) and ASR_MODEL_FOR[detected] != WHISPER_SIZE:
+        text = transcribe(audio_path, language=detected)
+
+    return text, detected, confidence
+
+
 def speak(text: str, lang: str = "hi", force: bool = False) -> Path:
     """
     Text -> mp3. Cached by content, so a rehearsed line is synthesised once and

@@ -226,7 +226,9 @@ _ASR_SPELLINGS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"आट्सो|आठसो|आठसौ"), "आठ सौ"),
     # Retroflex where a dental was spoken.
     (re.compile(r"पैंटीस|पेंटीस"), "पैंतीस"),
-    (re.compile(r"टेला"), "ठेला"),
+    # ठेला comes back as टेला or तेला depending on the decode; both are the cart,
+    # and the cart is what decides street_vendor.
+    (re.compile(r"टेला|तेला|थेला"), "ठेला"),
     # Missing final vowel sign. The lookahead stops this from corrupting the
     # correctly-spelled "रुपये"/"रुपया" into "रुपयेे".
     (re.compile(r"रुपय(?![ेाो])"), "रुपये"),
@@ -236,7 +238,10 @@ _ASR_SPELLINGS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Whisper writes Marathi in Devanagari, as it does Hindi, but the words
     # differ: 35 is पस्तीस not पैंतीस, and 800 is आठशे not आठ सौ.
     (re.compile(r"पस्तिस|पास्तिस"), "पस्तीस"),
-    (re.compile(r"आच्छे|आठ्शे|आठशे"), "आठ सौ"),
+    # Marathi आठशे (800) comes back differently on almost every decode. Each of
+    # these was observed, not invented; the fused ones matter because the amount
+    # regex needs a number word and a scale word it can see separately.
+    (re.compile(r"आच्छे|आच्चे|आच्शे|आठ्शे|आठशे|आठ्ठे"), "आठ सौ"),
     (re.compile(r"वर्शा|वर्षा"), "वर्ष"),
 
     # ── Gujarati and Bengali ──

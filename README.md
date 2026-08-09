@@ -25,6 +25,24 @@ Telugu and Kannada run on Whisper `medium` (`voice.ASR_MODEL_FOR`); on `small`
 they return unrelated tokens in unrelated scripts. Kannada takes about 88
 seconds, which is slow but correct — pre-cache it if you plan to demo it.
 
+You do not pick a language before speaking. Whisper detects it from the audio and
+the whole reply follows — voice, text and the scheme cards. The language chips are
+a fallback for when detection is unsure (`voice.DETECT_FLOOR`), not a prerequisite.
+
+**Two things must be pre-cached before a demo, or the wifi-off run degrades:**
+
+```bash
+# 1. Spoken prompts. An uncached line is SILENT offline.
+.venv/bin/python -c "import sys; sys.path[:0]=['.','services/api']; \
+from channels import ivr_sim; print(ivr_sim.precache_prompts())"
+
+# 2. Scheme-card text. Uncached, cards fall back to English rather than making
+#    the caller wait — the serving path never calls the model.
+.venv/bin/python -c "import sys; sys.path[:0]=['.','services/api']; \
+from core import narrate; from channels import ivr_sim; \
+print(narrate.precache_ui(ivr_sim.SUPPORTED_LANGUAGES))"
+```
+
 **After editing a prompt string, re-cache it:**
 
 ```bash

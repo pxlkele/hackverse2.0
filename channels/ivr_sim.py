@@ -26,8 +26,10 @@ screen pass their language to begin() and never hear the menu.
 
 from __future__ import annotations
 
+import os
 import re
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -445,7 +447,9 @@ def on_speech(call_id: str, text: str) -> Turn:
         detail={
             "transcript": text,
             "profile": user_profile.model_dump(mode="json"),
-            "decisions": [d.model_dump(mode="json") for d in decisions],
+            # Carries *_local fields beside the originals: the card reads in the
+            # caller's language while the audited values stay untouched.
+            "decisions": narrate.localise_decisions(decisions, session.language),
             "menu_audio_url": _audio_url_for(menu, session.language),
         },
     )
@@ -511,27 +515,89 @@ def say_text(request: TextRequest):
     return {"turn": on_speech(request.call_id, request.text).__dict__}
 
 
+DEBUG_CLIPS = Path(__file__).resolve().parent.parent / "services" / "api" / "data" / "debug_clips"
+
+
 @router.post("/speech")
 async def post_speech(call_id: str = Form(...), audio: UploadFile = File(...)):
-    """Recorded audio from the browser mic -> Whisper -> the pipeline."""
+    """
+    Recorded audio from the browser mic -> Whisper -> the pipeline.
+
+    Everything here is logged, because it was not and that cost real debugging
+    time: a failure returned "I did not hear anything" with a 200 and the reason
+    only in the response body, so the server log showed a clean success for an
+    ASR timeout, a busy lock, a zero-byte upload and genuine silence alike. Four
+    different problems, one indistinguishable symptom.
+
+    Set SETU_DEBUG_CLIPS=1 to keep the uploaded audio. A clip from the actual
+    phone is the only way to tell "the mic recorded nothing" from "we could not
+    decode what the mic sent".
+    """
     session = _session(call_id)
     suffix = Path(audio.filename or "clip.webm").suffix or ".webm"
+    raw = await audio.read()
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await audio.read())
+        tmp.write(raw)
         clip = tmp.name
 
+    if os.getenv("SETU_DEBUG_CLIPS") == "1":
+        DEBUG_CLIPS.mkdir(parents=True, exist_ok=True)
+        kept = DEBUG_CLIPS / f"{call_id}-{int(time.time())}{suffix}"
+        kept.write_bytes(raw)
+        print(f"ivr/speech: kept {kept}", flush=True)
+
+    started = time.monotonic()
     try:
-        text = voice.transcribe(clip, language=session.language)
+        # Answer in the language they spoke, not the one they tapped. Someone who
+        # speaks Marathi into a screen still set to Hindi should get Marathi back;
+        # expecting them to find their language first defeats the whole premise.
+        text, detected, confidence = voice.transcribe_auto(
+            clip, default_language=session.language
+        )
+        if detected != session.language:
+            print(
+                f"ivr/speech language switched {session.language} -> {detected} "
+                f"(p={confidence:.2f}) call={call_id}",
+                flush=True,
+            )
+            session.language = detected
     except Exception as exc:  # noqa: BLE001 - ASR failure is a call event, not a 500
+        print(
+            f"ivr/speech FAILED call={call_id} lang={session.language} "
+            f"bytes={len(raw)} name={audio.filename!r} type={audio.content_type!r} "
+            f"after={time.monotonic() - started:.1f}s: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
         return {
             "turn": _turn(session, "nothing_heard", "digit").__dict__,
             "error": str(exc),
+            "reason": type(exc).__name__,
         }
     finally:
         Path(clip).unlink(missing_ok=True)
 
-    return {"turn": on_speech(call_id, text).__dict__, "transcript": text}
+    print(
+        f"ivr/speech call={call_id} lang={session.language} bytes={len(raw)} "
+        f"name={audio.filename!r} type={audio.content_type!r} "
+        f"asr={time.monotonic() - started:.1f}s chars={len(text)} text={text[:80]!r}",
+        flush=True,
+    )
+    if not text.strip():
+        # Genuine silence and an undecodable container look identical to the
+        # caller; say so in the log at least.
+        print(
+            f"ivr/speech EMPTY TRANSCRIPT call={call_id} — {len(raw)} bytes of "
+            f"{audio.content_type!r} decoded to nothing",
+            flush=True,
+        )
+    return {
+        "turn": on_speech(call_id, text).__dict__,
+        "transcript": text,
+        # So the client can move its own UI to the language that was actually
+        # spoken, rather than staying on the chip the caller tapped.
+        "language": session.language,
+    }
 
 
 _KEY = re.compile(r"^[a-f0-9]{6,40}$")
