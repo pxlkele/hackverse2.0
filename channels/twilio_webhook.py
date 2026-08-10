@@ -25,16 +25,32 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 import threading
 import time
-from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Form, Request, Response
+from fastapi import APIRouter, Form, Response
 
-from channels.ivr_sim import begin, on_digit, on_speech, Turn
+from channels.ivr_sim import begin, on_chat, on_digit, on_speech, Turn, _SESSIONS
 from services.api.core import phone_bus
+
+
+# Twilio speech-recognition language codes (BCP-47). Trial accounts can't use
+# <Record>, so we ask Twilio to transcribe with <Gather input="speech">
+# instead. Fall back to Hindi-English bilingual if we don't know yet.
+_TWILIO_SPEECH_LANG = {
+    "hi": "hi-IN", "en": "en-IN", "mr": "mr-IN", "gu": "gu-IN",
+    "bn": "bn-IN", "ta": "ta-IN", "te": "te-IN", "kn": "kn-IN",
+}
+
+
+def _speech_lang_for(call_id: str | None) -> str:
+    if not call_id:
+        return "hi-IN"
+    session = _SESSIONS.get(call_id)
+    if session and session.language:
+        return _TWILIO_SPEECH_LANG.get(session.language, "hi-IN")
+    return "hi-IN"
 
 router = APIRouter(prefix="/twilio", tags=["twilio"])
 log = logging.getLogger("setu.twilio")
@@ -52,25 +68,21 @@ FROM_NUMBER   = os.getenv("TWILIO_PHONE_NUMBER", "")
 MISSED_CALL_MAX_DURATION = 15  # seconds — international ring can be slow
 
 
-def _twiml(turn: Turn) -> str:
+def _twiml(turn: Turn, call_id: str | None = None) -> str:
     """
     Render a Turn as TwiML.
 
-    Structure:
-      - If there is a cached audio file, <Play> it (sounds better than <Say>).
-      - Otherwise <Say> the text with Polly.
-      - Then wait for what the turn expects:
-        - "digit"  → <Gather numDigits="1">
-        - "speech" → <Record maxLength="15" playBeep="true">
-        - "end"    → <Hangup>
-      - Special case: state=="chatting" wraps <Play> inside <Gather> (digits
-        interrupt) with <Record> as fallback (speech captured if no digit).
-        Lets the caller press 0/1 mid-answer, or just speak instead.
+    Twilio trial accounts cannot use <Record>, so all speech capture goes
+    through <Gather input="speech"> — Twilio's own STT. The transcript
+    comes back as the `SpeechResult` form field on the action URL.
+
+    All Gathers point at /twilio/gather, which branches by payload:
+      - Digits present → on_digit
+      - SpeechResult present → on_chat (if chatting) or on_speech (else)
     """
+    speech_lang = _speech_lang_for(call_id)
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<Response>"]
 
-    # Audio-url helper: relative /api/ivr/audio/… → full public URL. If no
-    # PUBLIC_URL configured or no cached audio, we fall back to <Say>.
     def _play_lines(indent: str) -> list[str]:
         out: list[str] = []
         if turn.audio_url and PUBLIC_URL:
@@ -83,40 +95,37 @@ def _twiml(turn: Turn) -> str:
             out.append(f'{indent}<Say voice="Polly.Aditi" language="hi-IN">{safe}</Say>')
         return out
 
-    # ── chat mode: audio inside <Gather>, then <Record> fallback ────────────
+    # ── chat mode: accept both digits (0/1) and speech in one Gather ────────
     if turn.state == "chatting":
-        # actionOnEmptyResult="false" — if the caller doesn't press within
-        # `timeout` after the audio ends, Twilio moves on to <Record> below
-        # instead of POSTing to /twilio/gather with empty Digits. That's the
-        # whole trick: keypress interrupts audio, silence starts recording.
         lines.append(
-            f'  <Gather input="dtmf" numDigits="1" timeout="2" '
-            f'actionOnEmptyResult="false" '
+            f'  <Gather input="dtmf speech" numDigits="1" timeout="5" '
+            f'speechTimeout="auto" language="{speech_lang}" '
             f'action="{PUBLIC_URL}/twilio/gather" method="POST">'
         )
         lines.extend(_play_lines("    "))
         lines.append("  </Gather>")
-        # No digit pressed during or shortly after audio — start recording.
-        lines.append(
-            f'  <Record maxLength="15" playBeep="true" '
-            f'action="{PUBLIC_URL}/twilio/speech" method="POST"/>'
-        )
         lines.append("</Response>")
         return "\n".join(lines)
 
-    # ── all other states: play audio, then the single expected next verb ────
-    lines.extend(_play_lines("  "))
-
+    # ── digit menus (greeting language pick, after_answer, not_understood) ──
     if turn.expect == "digit":
-        # timeout=12 gives the caller room to hear the full 8-language menu
-        # (~20s) and still pick without being redirected as silence.
-        lines.append(f'  <Gather numDigits="1" timeout="12" action="{PUBLIC_URL}/twilio/gather" method="POST"/>')
+        lines.append(
+            f'  <Gather input="dtmf" numDigits="1" timeout="12" '
+            f'action="{PUBLIC_URL}/twilio/gather" method="POST">'
+        )
+        lines.extend(_play_lines("    "))
+        lines.append("  </Gather>")
+    # ── ask_situation, need_more, chat_paused, chat_restart: speech capture ─
     elif turn.expect == "speech":
         lines.append(
-            f'  <Record maxLength="15" playBeep="true" '
-            f'action="{PUBLIC_URL}/twilio/speech" method="POST"/>'
+            f'  <Gather input="speech" timeout="5" speechTimeout="auto" '
+            f'language="{speech_lang}" '
+            f'action="{PUBLIC_URL}/twilio/gather" method="POST">'
         )
+        lines.extend(_play_lines("    "))
+        lines.append("  </Gather>")
     elif turn.expect == "end":
+        lines.extend(_play_lines("  "))
         lines.append("  <Hangup/>")
 
     lines.append("</Response>")
@@ -186,65 +195,64 @@ async def incoming(
     _CALL_MAP[CallSid]   = call_id
     _CALL_START[CallSid] = time.monotonic()
     phone_bus.publish({"type": "call_started", "call_id": call_id, "from": From})
-    return _xml(_twiml(turn))
+    return _xml(_twiml(turn, call_id))
 
 
 @router.post("/gather")
 async def gather(
     CallSid: str = Form(...),
     Digits:  str = Form(default=""),
+    SpeechResult: str = Form(default=""),
 ):
-    """Twilio calls this after the caller presses a key."""
+    """
+    Single entry point for all caller input on the Twilio side.
+
+    <Gather> can send back:
+      - Digits            → keypad press → on_digit
+      - SpeechResult      → speech transcript → on_chat or on_speech
+      - Neither (timeout) → treat as silence, re-render the current turn or
+        fall back to a fresh session
+    """
     call_id = _CALL_MAP.get(CallSid)
     if not call_id:
         call_id, turn = begin()
         _CALL_MAP[CallSid]   = call_id
         _CALL_START[CallSid] = time.monotonic()
-        return _xml(_twiml(turn))
+        return _xml(_twiml(turn, call_id))
 
-    turn = on_digit(call_id, Digits)
-    return _xml(_twiml(turn))
+    if Digits:
+        turn = on_digit(call_id, Digits)
+    elif SpeechResult:
+        session = _SESSIONS.get(call_id)
+        handler = on_chat if session and session.state == "chatting" else on_speech
+        turn = handler(call_id, SpeechResult)
+    else:
+        # Timeout with nothing captured — bounce them back to speak again.
+        turn = on_speech(call_id, "")
+
+    return _xml(_twiml(turn, call_id))
 
 
 @router.post("/speech")
-async def speech(
-    request: Request,
+async def speech_legacy(
     CallSid: str = Form(...),
-    RecordingUrl: str = Form(default=""),
+    SpeechResult: str = Form(default=""),
 ):
     """
-    Twilio calls this after a <Record> finishes.
-
-    We download the recording from Twilio, transcribe with Whisper, then run
-    the full pipeline — identical to the browser mic path.
+    Legacy endpoint. Old TwiML used <Record> and posted RecordingUrl here;
+    trial accounts can't use <Record> so nothing new hits this. Kept as a
+    thin forward in case any Twilio queue still has a stale action URL.
     """
     call_id = _CALL_MAP.get(CallSid)
     if not call_id:
         call_id, turn = begin()
         _CALL_MAP[CallSid] = call_id
-        return _xml(_twiml(turn))
+        return _xml(_twiml(turn, call_id))
 
-    text = ""
-    if RecordingUrl:
-        try:
-            resp = httpx.get(
-                f"{RecordingUrl}.mp3",
-                auth=(ACCOUNT_SID, AUTH_TOKEN),
-                timeout=30,
-                follow_redirects=True,
-            )
-            resp.raise_for_status()
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                tmp.write(resp.content)
-                clip = tmp.name
-            from services.api.core import voice
-            text = voice.transcribe(clip, language="hi")
-            Path(clip).unlink(missing_ok=True)
-        except Exception:  # noqa: BLE001
-            pass  # empty text → nothing_heard branch in on_speech
-
-    turn = on_speech(call_id, text)
-    return _xml(_twiml(turn))
+    session = _SESSIONS.get(call_id)
+    handler = on_chat if session and session.state == "chatting" else on_speech
+    turn = handler(call_id, SpeechResult)
+    return _xml(_twiml(turn, call_id))
 
 
 @router.post("/status")
