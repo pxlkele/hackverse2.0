@@ -333,6 +333,114 @@ def ledger_seed(user_id: str = "demo", days: int = 30):
     return {"days_written": written, "user_id": user_id}
 
 
+# ── Fairness / evaluation endpoints ─────────────────────────────────────────
+#
+# The claim is not "outcomes are balanced across groups" — that is only true
+# because the persona set makes it so. The stronger claim is "the rule engine
+# cannot see protected attributes at all." /api/eval/summary returns that audit
+# plus per-slice match rates. /api/eval/flip_test lets a caller mutate one
+# attribute on a persona and prove the decisions are byte-identical.
+
+class FlipTestRequest(BaseModel):
+    persona_id: str = "ramesh_no_cov"
+    attribute: str = "gender"           # gender | state
+    value_b: str = "female"             # value to flip TO
+
+
+@app.get("/api/eval/summary")
+def eval_summary():
+    """
+    One call for the Fairness tab.
+
+    Runs the eval harness in-process (no LLM, pure Python, milliseconds) and
+    returns the rule-field audit, per-slice match rates, per-scheme
+    precision/recall/F1, and latency percentiles.
+    """
+    from eval.run_eval import evaluate_persona, fairness, load_personas, score
+
+    personas = load_personas()
+    results = [evaluate_persona(p) for p in personas]
+    scores = score(results)
+    fair = fairness(results)
+
+    latencies = sorted(r["latency_ms"] for r in results)
+    n = len(latencies)
+    percentile = lambda p: latencies[min(int(n * p), n - 1)] if n else 0.0
+
+    passed = sum(r["passed"] for r in results)
+    macro_p = sum(s["precision"] for s in scores.values()) / len(scores) if scores else 0.0
+    macro_r = sum(s["recall"] for s in scores.values()) / len(scores) if scores else 0.0
+
+    return {
+        "personas": len(personas),
+        "passed": passed,
+        "schemes_version": eligibility.schemes_version(),
+        "rule_audit": eligibility.rule_field_audit(),
+        "fairness": fair,
+        "scores": scores,
+        "macro": {"precision": round(macro_p, 3), "recall": round(macro_r, 3)},
+        "latency_ms": {
+            "median": round(percentile(0.5), 1),
+            "p95": round(percentile(0.95), 1),
+        },
+    }
+
+
+@app.post("/api/eval/flip_test")
+def flip_test(request: FlipTestRequest):
+    """
+    Mutate one attribute on a persona, re-run the engine, and prove the
+    decisions are byte-identical. The strongest possible answer to "how do you
+    know it isn't biased" is a live demonstration that the model can't be —
+    because the attribute is not in any rule.
+    """
+    import hashlib as _hashlib
+    import json as _json
+
+    from eval.run_eval import load_personas
+
+    personas = {p["id"]: p for p in load_personas()}
+    persona = personas.get(request.persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail=f"no persona {request.persona_id!r}")
+
+    profile_a = profile_mod.Profile(**persona["profile"])
+    value_a = getattr(profile_a, request.attribute, None)
+
+    if value_a is None:
+        default = {"gender": "male", "state": persona["profile"].get("state", "Karnataka")}
+        value_a = default.get(request.attribute, "unknown")
+        profile_a = profile_a.model_copy(update={request.attribute: value_a})
+
+    profile_b = profile_a.model_copy(update={request.attribute: request.value_b})
+
+    def decide(p):
+        return pathfinder.build_all(p, eligibility.evaluate_all(p))
+
+    def dhash(ds):
+        payload = _json.dumps(
+            [d.model_dump(exclude={"explanation"}, mode="json") for d in ds],
+            sort_keys=True, default=str,
+        )
+        return _hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    decisions_a = decide(profile_a)
+    decisions_b = decide(profile_b)
+    hash_a, hash_b = dhash(decisions_a), dhash(decisions_b)
+
+    return {
+        "persona_id": request.persona_id,
+        "attribute": request.attribute,
+        "value_a": value_a,
+        "value_b": request.value_b,
+        "hash_a": hash_a,
+        "hash_b": hash_b,
+        "identical": hash_a == hash_b,
+        "summary_a": {d.scheme_id: d.status.value for d in decisions_a},
+        "summary_b": {d.scheme_id: d.status.value for d in decisions_b},
+    }
+
+
 @app.get("/api/audio")
 def audio(path: str):
     """

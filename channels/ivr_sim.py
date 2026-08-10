@@ -571,7 +571,14 @@ def on_speech(call_id: str, text: str) -> Turn:
         return _turn(session, "nothing_heard", "digit")
 
     # Mirror to the console (Twilio, PWA speech, PWA text bypass all land here).
-    phone_bus.publish({"type": "user_speech", "call_id": call_id, "text": text})
+    # `language` lets the console auto-run its pipeline in the same language
+    # the caller spoke, rather than whatever the dropdown was last on.
+    phone_bus.publish({
+        "type": "user_speech",
+        "call_id": call_id,
+        "text": text,
+        "language": session.language,
+    })
 
     session.last_text = text
     session.transcript.append({"who": "caller", "text": text})
@@ -709,7 +716,10 @@ def on_chat(call_id: str, text: str) -> Turn:
             options=MENU_CHAT,
         )
 
-    phone_bus.publish({"type": "user_speech", "call_id": call_id, "text": text})
+    phone_bus.publish({
+        "type": "user_speech", "call_id": call_id, "text": text,
+        "language": session.language,
+    })
     session.transcript.append({"who": "caller", "text": text})
     session.last_text = text
 

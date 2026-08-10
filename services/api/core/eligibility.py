@@ -231,3 +231,36 @@ def get_rule(scheme_id: str, rule_id: str) -> dict[str, Any] | None:
     if not scheme:
         return None
     return next((r for r in scheme["rules"] if r["id"] == rule_id), None)
+
+
+# Attributes a fair-lending regime would flag if a rule referenced them.
+# The audit checks that no rule field is one of these — the stronger fairness
+# claim than "outcomes are balanced across groups" is "the engine cannot see
+# these attributes at all."
+PROTECTED_ATTRIBUTES = ("gender", "caste", "religion", "race", "ethnicity")
+
+
+def rule_field_audit() -> dict[str, Any]:
+    """
+    How many rules exist, which fields they use, and how many touch a protected
+    attribute. Fairness by construction, provable from schemes.yaml.
+    """
+    fields_used: dict[str, int] = {}
+    total = 0
+    protected_hits: list[str] = []
+
+    for scheme in load_schemes()["schemes"]:
+        for rule in scheme.get("rules", []):
+            total += 1
+            field = rule.get("field", "")
+            fields_used[field] = fields_used.get(field, 0) + 1
+            if field in PROTECTED_ATTRIBUTES:
+                protected_hits.append(f"{scheme['id']}:{rule['id']}")
+
+    return {
+        "total_rules": total,
+        "protected_attributes": list(PROTECTED_ATTRIBUTES),
+        "protected_rule_count": len(protected_hits),
+        "protected_rule_ids": protected_hits,
+        "fields_used": fields_used,
+    }

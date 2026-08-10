@@ -6,7 +6,12 @@ import {
   Mic, Database, Volume2, Send, RotateCcw, CheckCircle2,
   Loader2, Activity, FileText, TrendingUp, Upload, AlertTriangle,
   CheckCircle, XCircle, ChevronDown, ChevronUp, Coins, Phone,
+  Scale, Shield, Fingerprint,
 } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+  ResponsiveContainer, Cell, LabelList, ReferenceLine, Legend,
+} from "recharts";
 
 /* ─────────────── API types ─────────────── */
 type Rule = { kind: "rule"; passed: boolean | null; label: string; citation: string; quote: string; expected: string; actual: string; scheme: string };
@@ -87,7 +92,7 @@ const SAMPLES = [
   { label: "Vendor with everything",      text: "Main 40 saal ka hoon, Delhi mein chaat ka thela lagata hoon. Roz hazaar ka dhandha. Aadhaar, bank passbook, vending certificate aur PhonePe sab hai." },
 ];
 
-type Tab = "landing" | "pipeline" | "doctor" | "ledger";
+type Tab = "landing" | "pipeline" | "doctor" | "ledger" | "fairness";
 type Status = "idle" | "processing" | "complete";
 
 const NAV: { key: Tab | "demo"; label: string }[] = [
@@ -95,6 +100,7 @@ const NAV: { key: Tab | "demo"; label: string }[] = [
   { key: "pipeline", label: "Go to Dashboard" },
   { key: "ledger",   label: "Go to Ledger" },
   { key: "doctor",   label: "Go to Doc Doctor" },
+  { key: "fairness", label: "Go to Fairness" },
 ];
 
 /* ─────────────── root ─────────────── */
@@ -166,6 +172,7 @@ export default function App() {
         {!booting && tab === "pipeline" && <PipelineTab />}
         {!booting && tab === "doctor"   && <DocDoctorTab />}
         {!booting && tab === "ledger"   && <LedgerTab />}
+        {!booting && tab === "fairness" && <FairnessTab />}
       </div>
     </div>
   );
@@ -387,21 +394,30 @@ function PipelineTab() {
   const [phoneLive, setPhoneLive] = useState<{ from: string } | null>(null);
   const abortRef                = useRef(false);
 
-  // Phone → console bridge. When the Twilio webhook transcribes what the
-  // caller said, mirror it into the input textarea so the operator sees it live.
-  // Uses fetch-based streaming so the ngrok header can be set (native
-  // EventSource doesn't support custom headers).
+  // Phone / PWA → console bridge. When a caller (Twilio or the PWA) speaks,
+  // mirror the transcript into the input box AND kick the pipeline
+  // automatically. Uses fetch-based streaming so the ngrok header can be set
+  // (native EventSource doesn't support custom headers).
   useEffect(() => {
     const stop = apiEventStream("/api/phone/stream", (data: any) => {
       if (data?.type === "call_started") {
         setPhoneLive({ from: data.from || "unknown" });
       } else if (data?.type === "user_speech" && data.text) {
         setInput(data.text);
+        // Auto-run: pass the text + language directly (state hasn't flushed yet).
+        // The server can carry the session's language in the event; fall back
+        // to whatever the operator's dropdown says.
+        const eventLang = typeof data.language === "string" ? data.language : lang;
+        if (eventLang !== lang) setLang(eventLang);
+        runWith(data.text, eventLang);
       } else if (data?.type === "call_ended") {
         setPhoneLive(null);
       }
     });
     return stop;
+    // Intentionally empty deps — the stream should mount once. runWith closes
+    // over isRunning which it reads at call time via React's current-state read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const r0 = useRef<HTMLDivElement>(null);
   const r1 = useRef<HTMLDivElement>(null);
@@ -409,8 +425,11 @@ function PipelineTab() {
   const refs = [r0, r1, r2];
   const scrollTo = (i: number) => refs[i].current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  const run = async () => {
-    if (!input.trim() || isRunning) return;
+  // Passing text/lang explicitly (instead of reading state) lets the SSE
+  // mirror auto-run immediately without waiting for React to flush setInput.
+  const runWith = async (rawText: string, rawLang: string) => {
+    const text = (rawText || "").trim();
+    if (!text || isRunning) return;
     abortRef.current = false;
     setIsRunning(true); setResult(null); setError("");
 
@@ -420,7 +439,7 @@ function PipelineTab() {
     try {
       const r = await apiFetch("/api/reason", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input.trim(), language: lang }),
+        body: JSON.stringify({ text, language: rawLang }),
       });
       if (!r.ok) throw new Error(`API ${r.status}`);
       res = await r.json();
@@ -444,6 +463,8 @@ function PipelineTab() {
     setResult(res);
     setStatuses(["complete","complete","complete"]); setActive(-1); setIsRunning(false);
   };
+
+  const run = () => runWith(input, lang);
 
   const reset = () => {
     abortRef.current = true;
@@ -473,8 +494,8 @@ function PipelineTab() {
             )}
 
             <div style={{
-              maxWidth: i === 0 ? 460 : 540,
-              transform: i === 0 ? "scale(1.5)" : undefined,
+              maxWidth: i === 0 ? 460 : i === 1 ? 380 : i === 2 ? 540 : 540,
+              transform: i === 0 ? "scale(1.5)" : i === 1 ? "scale(2)" : i === 2 ? "scale(1.25)" : undefined,
               transformOrigin: "left center",
             }}>
               {/* stage label */}
